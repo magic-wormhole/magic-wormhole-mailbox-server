@@ -1,13 +1,13 @@
 # -*- mode: conf -*-
 
 [run]
-# only record trace data for wormhole.*
+# only record trace data for wormhole_mailbox_server.*
 source =
-   wormhole
+   wormhole_mailbox_server
 # and don't trace the test files themselves, or Versioneer's stuff
 omit =
-   src/wormhole/test/*
-   src/wormhole/_version.py
+   src/wormhole_mailbox_server/test/*
+   src/wormhole_mailbox_server/_version.py
 
 
 # This allows 'coverage combine' to correlate the tracing data built while
