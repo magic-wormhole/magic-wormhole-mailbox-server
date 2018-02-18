@@ -3,8 +3,8 @@ import time
 from twisted.internet import reactor
 from twisted.python import log
 from autobahn.twisted import websocket
-from .rendezvous import CrowdedError, ReclaimedError, SidedMessage
-from ..util import dict_to_bytes, bytes_to_dict
+from .server import CrowdedError, ReclaimedError, SidedMessage
+from .util import dict_to_bytes, bytes_to_dict
 
 # The WebSocket allows the client to send "commands" to the server, and the
 # server to send "responses" to the client. Note that commands and responses
@@ -95,7 +95,7 @@ class Error(Exception):
     def __init__(self, explain):
         self._explain = explain
 
-class WebSocketRendezvous(websocket.WebSocketServerProtocol):
+class WebSocketServer(websocket.WebSocketServerProtocol):
     def __init__(self):
         websocket.WebSocketServerProtocol.__init__(self)
         self._app = None
@@ -111,13 +111,13 @@ class WebSocketRendezvous(websocket.WebSocketServerProtocol):
         self._did_close = False
 
     def onConnect(self, request):
-        rv = self.factory.rendezvous
+        rv = self.factory.server
         if rv.get_log_requests():
             log.msg("ws client connecting: %s" % (request.peer,))
         self._reactor = self.factory.reactor
 
     def onOpen(self):
-        rv = self.factory.rendezvous
+        rv = self.factory.server
         self.send("welcome", welcome=rv.get_welcome())
 
     def onMessage(self, payload, isBinary):
@@ -168,7 +168,7 @@ class WebSocketRendezvous(websocket.WebSocketServerProtocol):
             raise Error("bind requires 'appid'")
         if "side" not in msg:
             raise Error("bind requires 'side'")
-        self._app = self.factory.rendezvous.get_app(msg["appid"])
+        self._app = self.factory.server.get_app(msg["appid"])
         self._side = msg["side"]
 
 
@@ -296,11 +296,11 @@ class WebSocketRendezvous(websocket.WebSocketServerProtocol):
             self._mailbox.remove_listener(self)
 
 
-class WebSocketRendezvousFactory(websocket.WebSocketServerFactory):
-    protocol = WebSocketRendezvous
+class WebSocketServerFactory(websocket.WebSocketServerFactory):
+    protocol = WebSocketServer
 
-    def __init__(self, url, rendezvous):
+    def __init__(self, url, server):
         websocket.WebSocketServerFactory.__init__(self, url)
         self.setProtocolOptions(autoPingInterval=60, autoPingTimeout=600)
-        self.rendezvous = rendezvous
+        self.server = server
         self.reactor = reactor # for tests to control

@@ -1,6 +1,11 @@
-DROP TABLE `nameplates`;
-DROP TABLE `messages`;
-DROP TABLE `mailboxes`;
+
+-- note: anything which isn't an boolean, integer, or human-readable unicode
+-- string, (i.e. binary strings) will be stored as hex
+
+CREATE TABLE `version`
+(
+ `version` INTEGER -- contains one row, set to 1
+);
 
 
 -- Wormhole codes use a "nameplate": a short name which is only used to
@@ -59,10 +64,3 @@ CREATE TABLE `messages`
  `msg_id` VARCHAR
 );
 CREATE INDEX `messages_idx` ON `messages` (`app_id`, `mailbox_id`);
-
-ALTER TABLE `mailbox_usage` ADD COLUMN `for_nameplate` BOOLEAN;
-CREATE INDEX `mailbox_usage_result_idx` ON `mailbox_usage` (`result`);
-CREATE INDEX `transit_usage_result_idx` ON `transit_usage` (`result`);
-
-DELETE FROM `version`;
-INSERT INTO `version` (`version`) VALUES (3);

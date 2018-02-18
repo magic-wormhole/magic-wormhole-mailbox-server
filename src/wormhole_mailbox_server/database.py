@@ -8,17 +8,12 @@ from twisted.python import log
 class DBError(Exception):
     pass
 
-def get_schema(version):
-    schema_bytes = resource_string("wormhole.server",
-                                   "db-schemas/v%d.sql" % version)
+def get_schema(name, version):
+    schema_bytes = resource_string("wormhole_mailbox_server",
+                                   "db-schemas/%s-v%d.sql" % (name, version))
     return schema_bytes.decode("utf-8")
 
-def get_upgrader(new_version):
-    schema_bytes = resource_string("wormhole.server",
-                                   "db-schemas/upgrade-to-v%d.sql" % new_version)
-    return schema_bytes.decode("utf-8")
-
-TARGET_VERSION = 3
+TARGET_VERSION = 1
 
 def dict_factory(cursor, row):
     d = {}
@@ -26,11 +21,11 @@ def dict_factory(cursor, row):
         d[col[0]] = row[idx]
     return d
 
-def _initialize_db_schema(db, target_version):
+def _initialize_db_schema(db, name, target_version):
     """Creates the application schema in the given database.
     """
     log.msg("populating new database with schema v%s" % target_version)
-    schema = get_schema(target_version)
+    schema = get_schema(name, target_version)
     db.executescript(schema)
     db.execute("INSERT INTO version (version) VALUES (?)",
                (target_version,))
@@ -66,7 +61,7 @@ def _get_temporary_dbfile(dbfile):
     os.close(fd)
     return name
 
-def _atomic_create_and_initialize_db(dbfile, target_version):
+def _atomic_create_and_initialize_db(dbfile, name, target_version):
     """Create and return a new database, initialized with the application
     schema.
 
@@ -74,22 +69,22 @@ def _atomic_create_and_initialize_db(dbfile, target_version):
     """
     temp_dbfile = _get_temporary_dbfile(dbfile)
     db = _open_db_connection(temp_dbfile)
-    _initialize_db_schema(db, target_version)
+    _initialize_db_schema(db, name, target_version)
     db.close()
     os.rename(temp_dbfile, dbfile)
     return _open_db_connection(dbfile)
 
-def get_db(dbfile, target_version=TARGET_VERSION):
+def _get_db(dbfile, name, target_version=TARGET_VERSION):
     """Open or create the given db file. The parent directory must exist.
     Returns the db connection object, or raises DBError.
     """
     if dbfile == ":memory:":
         db = _open_db_connection(dbfile)
-        _initialize_db_schema(db, target_version)
+        _initialize_db_schema(db, name, target_version)
     elif os.path.exists(dbfile):
         db = _open_db_connection(dbfile)
     else:
-        db = _atomic_create_and_initialize_db(dbfile, target_version)
+        db = _atomic_create_and_initialize_db(dbfile, name, target_version)
 
     try:
         version = db.execute("SELECT version FROM version").fetchone()["version"]
@@ -98,23 +93,31 @@ def get_db(dbfile, target_version=TARGET_VERSION):
         # Perhaps it was created with an old version, or it might be junk.
         raise DBError("db file is unusable: %s" % e)
 
-    while version < target_version:
-        log.msg(" need to upgrade from %s to %s" % (version, target_version))
-        try:
-            upgrader = get_upgrader(version+1)
-        except ValueError: # ResourceError??
-            log.msg(" unable to upgrade %s to %s" % (version, version+1))
-            raise DBError("Unable to upgrade %s to version %s, left at %s"
-                          % (dbfile, version+1, version))
-        log.msg(" executing upgrader v%s->v%s" % (version, version+1))
-        db.executescript(upgrader)
-        db.commit()
-        version = version+1
+    ## while version < target_version:
+    ##     log.msg(" need to upgrade from %s to %s" % (version, target_version))
+    ##     try:
+    ##         upgrader = get_upgrader(version+1)
+    ##     except ValueError: # ResourceError??
+    ##         log.msg(" unable to upgrade %s to %s" % (version, version+1))
+    ##         raise DBError("Unable to upgrade %s to version %s, left at %s"
+    ##                       % (dbfile, version+1, version))
+    ##     log.msg(" executing upgrader v%s->v%s" % (version, version+1))
+    ##     db.executescript(upgrader)
+    ##     db.commit()
+    ##     version = version+1
 
     if version != target_version:
         raise DBError("Unable to handle db version %s" % version)
 
     return db
+
+def create_or_upgrade_channel_db(dbfile):
+    return _get_db(dbfile, "channel")
+
+def create_or_upgrade_usage_db(dbfile):
+    if dbfile is None:
+        return None
+    return _get_db(dbfile, "usage")
 
 def dump_db(db):
     # to let _iterdump work, we need to restore the original row factory

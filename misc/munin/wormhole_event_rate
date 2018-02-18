@@ -4,10 +4,11 @@
 Use the following in /etc/munin/plugin-conf.d/wormhole :
 
 [wormhole_*]
-env.serverdir /path/to/your/wormhole/server
+env.usagedb /path/to/your/wormhole/server/usage.sqlite
 """
 
-import os, sys, time, json
+from __future__ import print_function
+import os, sys, time, sqlite3, defaultdict
 
 CONFIG = """\
 graph_title Magic-Wormhole Server Events
@@ -34,17 +35,23 @@ scary.cdef scary,3600,*
 """
 
 if len(sys.argv) > 1 and sys.argv[1] == "config":
-    print CONFIG.rstrip()
+    print(CONFIG.rstrip())
     sys.exit(0)
 
-serverdir = os.environ["serverdir"]
-fn = os.path.join(serverdir, "stats.json")
-with open(fn) as f:
-    data = json.load(f)
-if time.time() > data["valid_until"]:
+usagedbfile = os.environ["usagedb"]
+assert os.path.exists(usagedbfile)
+usage_db = sqlite3.connect(usagedbfile)
+
+MINUTE = 60.0
+updated,rebooted = usage_db.execute("SELECT `updated`,`rebooted` FROM `current`").fetchone()
+if time.time() > updated + 5*MINUTE:
     sys.exit(1) # expired
 
-atm = data["rendezvous"]["all_time"]["mailbox_moods"]
-print "happy.value", atm.get("happy", 0)
-print "incomplete.value", (atm.get("pruney", 0) + atm.get("lonely", 0))
-print "scary.value", atm.get("scary", 0)
+atm = defaultdict(int)
+for mood in ["happy", "scary", "lonely", "errory", "pruney", "crowded"]:
+    atm[mood] = usage_db.execute("SELECT COUNT() FROM `mailboxes`"
+                                 " WHERE `result` = ?", (mood,)).fetchone()
+
+print("happy.value", atm["happy"])
+print("incomplete.value", (atm["pruney"] + atm["lonely"]))
+print("scary.value", atm["scary"])

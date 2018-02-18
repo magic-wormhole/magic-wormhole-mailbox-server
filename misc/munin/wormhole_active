@@ -4,10 +4,12 @@
 Use the following in /etc/munin/plugin-conf.d/wormhole :
 
 [wormhole_*]
-env.serverdir /path/to/your/wormhole/server
+env.channeldb /path/to/your/wormhole/server/channel.sqlite
+env.usagedb /path/to/your/wormhole/server/usage.sqlite
 """
 
-import os, sys, time, json
+from __future__ import print_function
+import os, sys, time, sqlite3
 
 CONFIG = """\
 graph_title Magic-Wormhole Active Channels
@@ -25,17 +27,26 @@ messages.type GAUGE
 """
 
 if len(sys.argv) > 1 and sys.argv[1] == "config":
-    print CONFIG.rstrip()
+    print(CONFIG.rstrip())
     sys.exit(0)
 
-serverdir = os.environ["serverdir"]
-fn = os.path.join(serverdir, "stats.json")
-with open(fn) as f:
-    data = json.load(f)
-if time.time() > data["valid_until"]:
+usagedbfile = os.environ["usagedb"]
+assert os.path.exists(usagedbfile)
+usage_db = sqlite3.connect(usagedbfile)
+
+channeldbfile = os.environ["channeldb"]
+assert os.path.exists(channeldbfile)
+channel_db = sqlite3.connect(channeldbfile)
+
+MINUTE = 60.0
+updated,rebooted = usage_db.execute("SELECT `updated`,`rebooted` FROM `current`").fetchone()
+if time.time() > updated + 5*MINUTE:
     sys.exit(1) # expired
 
-ra = data["rendezvous"]["active"]
-print "nameplates.value", ra["nameplates_total"]
-print "mailboxes.value", ra["mailboxes_total"]
-print "messages.value", ra["messages_total"]
+nameplates = channel_db.execute("SELECT COUNT() FROM `nameplates`").fetchone()
+mailboxes = channel_db.execute("SELECT COUNT() FROM `mailboxes`").fetchone()
+messages = channel_db.execute("SELECT COUNT() FROM `messages`").fetchone()
+
+print("nameplates.value", nameplates)
+print("mailboxes.value", mailboxes)
+print("messages.value", messages)

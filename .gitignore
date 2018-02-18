@@ -57,9 +57,7 @@ docs/_build/
 target/
 /twistd.pid
 /relay.sqlite
-/misc/node_modules/
-/.automat_visualize/
-/docs/state-machines/*.png
 
 # Virtual environment stuff
 venv/
+/src/twisted/plugins/dropin.cache
