@@ -1,0 +1,30 @@
+sudo: false
+language: python
+cache: pip
+before_cache:
+  - rm -f $HOME/.cache/pip/log/debug.log
+branches:
+  except:
+    - /^WIP-.*$/
+python:
+  - "2.7"
+  - "3.3"
+  - "3.4"
+  - "3.5"
+  - "3.6"
+  - "nightly"
+install:
+  - pip install -U pip tox virtualenv codecov
+before_script:
+  - if [[ $TRAVIS_PYTHON_VERSION == 3.6 ]]; then
+      pip install -U flake8 ;
+      flake8 *.py src --count --select=E901,E999,F821,F822,F823 --statistics ;
+    fi
+script:
+  - tox -e coverage
+after_success:
+  - codecov
+matrix:
+  allow_failures:
+    - python: "3.3"
+    - python: "nightly"
