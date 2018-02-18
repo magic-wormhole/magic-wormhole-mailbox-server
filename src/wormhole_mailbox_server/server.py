@@ -21,9 +21,10 @@ SidedMessage = namedtuple("SidedMessage", ["side", "phase", "body",
                                            "server_rx", "msg_id"])
 
 class Mailbox:
-    def __init__(self, app, db, app_id, mailbox_id):
+    def __init__(self, app, db, usage_db, app_id, mailbox_id):
         self._app = app
         self._db = db
+        self._usage_db = usage_db
         self._app_id = app_id
         self._mailbox_id = mailbox_id
         self._listeners = {} # handle -> (send_f, stop_f)
@@ -146,8 +147,10 @@ class Mailbox:
         db.execute("DELETE FROM `mailbox_sides` WHERE `mailbox_id`=?",
                    (self._mailbox_id,))
         db.execute("DELETE FROM `mailboxes` WHERE `id`=?", (self._mailbox_id,))
-        self._app._summarize_mailbox_and_store(for_nameplate, side_rows,
-                                               when, pruned=False)
+        if self._usage_db:
+            self._app._summarize_mailbox_and_store(for_nameplate, side_rows,
+                                                when, pruned=False)
+            self._usage_db.commit()
         db.commit()
         # Shut down any listeners, just in case they're still lingering
         # around.
@@ -165,8 +168,10 @@ class Mailbox:
 
 class AppNamespace(object):
 
-    def __init__(self, db, blur_usage, log_requests, app_id, allow_list):
+    def __init__(self, db, usage_db, blur_usage, log_requests, app_id,
+                 allow_list):
         self._db = db
+        self._usage_db = usage_db
         self._blur_usage = blur_usage
         self._log_requests = log_requests
         self._app_id = app_id
@@ -298,18 +303,20 @@ class AppNamespace(object):
         db.execute("DELETE FROM `nameplate_sides` WHERE `nameplates_id`=?",
                    (npid,))
         db.execute("DELETE FROM `nameplates` WHERE `id`=?", (npid,))
-        self._summarize_nameplate_and_store(side_rows, when, pruned=False)
+        if self._usage_db:
+            self._summarize_nameplate_and_store(side_rows, when, pruned=False)
+            self._usage_db.commit()
         db.commit()
 
     def _summarize_nameplate_and_store(self, side_rows, delete_time, pruned):
-        # requires caller to db.commit()
+        # requires caller to self._usage_db.commit()
         u = self._summarize_nameplate_usage(side_rows, delete_time, pruned)
-        self._db.execute("INSERT INTO `nameplate_usage`"
-                         " (`app_id`,"
-                         " `started`, `total_time`, `waiting_time`, `result`)"
-                         " VALUES (?, ?,?,?,?)",
-                         (self._app_id,
-                          u.started, u.total_time, u.waiting_time, u.result))
+        self._usage_db.execute("INSERT INTO `nameplates`"
+                            " (`app_id`,"
+                            " `started`, `total_time`, `waiting_time`, `result`)"
+                            " VALUES (?, ?,?,?,?)",
+                            (self._app_id,
+                            u.started, u.total_time, u.waiting_time, u.result))
         self._nameplate_counts[u.result] += 1
 
     def _summarize_nameplate_usage(self, side_rows, delete_time, pruned):
@@ -353,7 +360,8 @@ class AppNamespace(object):
             if self._log_requests:
                 log.msg("spawning #%s for app_id %s" % (mailbox_id,
                                                         self._app_id))
-            self._mailboxes[mailbox_id] = Mailbox(self, self._db,
+            self._mailboxes[mailbox_id] = Mailbox(self,
+                                                  self._db, self._usage_db,
                                                   self._app_id, mailbox_id)
         mailbox = self._mailboxes[mailbox_id]
 
@@ -380,9 +388,9 @@ class AppNamespace(object):
 
     def _summarize_mailbox_and_store(self, for_nameplate, side_rows,
                                      delete_time, pruned):
-        db = self._db
+        db = self._usage_db
         u = self._summarize_mailbox(side_rows, delete_time, pruned)
-        db.execute("INSERT INTO `mailbox_usage`"
+        db.execute("INSERT INTO `mailboxes`"
                    " (`app_id`, `for_nameplate`,"
                    "  `started`, `total_time`, `waiting_time`, `result`)"
                    " VALUES (?,?, ?,?,?,?)",
@@ -481,7 +489,8 @@ class AppNamespace(object):
             db.execute("DELETE FROM `nameplate_sides` WHERE `nameplates_id`=?",
                        (npid,))
             db.execute("DELETE FROM `nameplates` WHERE `id`=?", (npid,))
-            self._summarize_nameplate_and_store(side_rows, now, pruned=True)
+            if self._usage_db:
+                self._summarize_nameplate_and_store(side_rows, now, pruned=True)
             modified = True
 
         # delete all messages for old mailboxes
@@ -501,12 +510,15 @@ class AppNamespace(object):
                        (mailbox_id,))
             db.execute("DELETE FROM `mailboxes` WHERE `id`=?",
                        (mailbox_id,))
-            self._summarize_mailbox_and_store(for_nameplate, side_rows,
-                                              now, pruned=True)
+            if self._usage_db:
+                self._summarize_mailbox_and_store(for_nameplate, side_rows,
+                                                now, pruned=True)
             modified = True
 
         if modified:
             db.commit()
+            if self._usage_db:
+                self._usage_db.commit()
         log.msg("  prune complete, modified:", modified)
 
     def get_counts(self):
@@ -546,6 +558,7 @@ class Server(service.MultiService):
                 log.msg("spawning app_id %s" % (app_id,))
             self._apps[app_id] = AppNamespace(
                 self._db,
+                self._usage_db,
                 self._blur_usage,
                 self._log_requests,
                 app_id,
@@ -669,4 +682,5 @@ def make_server(db, allow_list=True,
         welcome["current_cli_version"] = advertise_version
     if signal_error:
         welcome["error"] = signal_error
-    return Server(db, welcome, blur_usage, allow_list, usage_db, log_file)
+    return Server(db, allow_list=allow_list, welcome=welcome,
+                  blur_usage=blur_usage, usage_db=usage_db, log_file=log_file)
