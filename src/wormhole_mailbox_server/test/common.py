@@ -19,13 +19,14 @@ class ServerBase:
         yield self._setup_relay(blur_usage=blur_usage, usage_db=usage_db)
 
     @inlineCallbacks
-    def _setup_relay(self, do_listen=False, **kwargs):
+    def _setup_relay(self, do_listen=False, web_log_requests=False, **kwargs):
         channel_db = create_or_upgrade_channel_db(":memory:")
         self._server = make_server(channel_db, **kwargs)
         if do_listen:
             ep = endpoints.TCP4ServerEndpoint(reactor, 0, interface="127.0.0.1")
-            site = make_web_server(self._server, log_requests=True)
-            self._lp = yield ep.listen(site)
+            self._site = make_web_server(self._server,
+                                         log_requests=web_log_requests)
+            self._lp = yield ep.listen(self._site)
             addr = self._lp.getHost()
             self.relayurl = "ws://127.0.0.1:%d/v1" % addr.port
             self.rdv_ws_port = addr.port

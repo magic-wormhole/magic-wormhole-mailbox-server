@@ -10,7 +10,6 @@ from .common import ServerBase
 from ..server import (make_server, Usage,
                       SidedMessage, CrowdedError, AppNamespace)
 from ..database import create_channel_db, create_usage_db
-from ..web import make_web_server
 
 class _Util:
     def _nameplate(self, app, name):
@@ -1344,14 +1343,13 @@ class Startup(unittest.TestCase):
         finally:
             s.stopService()
 
+# exercise _find_available_nameplate_id failing
+# exercise CrowdedError
+# exercise double free_mailbox
+# exercise _summarize_mailbox = quiet (0 sides)
+# exercise AppNamespace._shutdown
+#  so Server.stopService
+# test blur_usage/not on Server
+# test make_server(signal_error=)
+# exercise dump_stats (with/without usagedb)
 
-class WebSocketProtocolOptions(unittest.TestCase):
-    @mock.patch('wormhole_mailbox_server.web.WebSocketServerFactory')
-    def test_set(self, fake_factory):
-        make_web_server(None, False,
-                        websocket_protocol_options=[ ("foo", "bar"), ],
-                        )
-        self.assertEqual(
-            mock.call().setProtocolOptions(foo="bar"),
-            fake_factory.mock_calls[1],
-        )
