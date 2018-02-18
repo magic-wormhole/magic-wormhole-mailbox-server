@@ -7,7 +7,7 @@ CREATE TABLE `current`
 (
  `rebooted` INTEGER, -- seconds since epoch of most recent reboot
  `updated` INTEGER, -- when `current` was last updated
- `connections_websocket`, -- number of live clients via websocket
+ `connections_websocket` INTEGER -- number of live clients via websocket
 );
 
 -- one row is created each time a nameplate is retired

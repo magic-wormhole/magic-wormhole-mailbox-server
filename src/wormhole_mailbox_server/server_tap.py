@@ -10,7 +10,7 @@ from .server import make_server
 from .web import make_web_server
 from .database import create_or_upgrade_channel_db, create_or_upgrade_usage_db
 
-LONGDESC = """This plugin sets up a 'Rendezvous' server for magic-wormhole.
+LONGDESC = """This plugin sets up a 'Mailbox' server for magic-wormhole.
 This service forwards short messages between clients, to perform key exchange
 and connection setup."""
 
@@ -39,6 +39,9 @@ class Options(usage.Options):
     def opt_disallow_list(self):
         self["allow-list"] = False
 
+    def opt_log_fd(self, arg):
+        self["log-fd"] = int(arg)
+
     def opt_blur_usage(self, arg):
         # --blur-usage= is in seconds. If the option isn't provided, we'll keep
         # the default of None
@@ -46,7 +49,6 @@ class Options(usage.Options):
 
     def opt_websocket_protocol_option(self, arg):
         """A websocket server protocol option to configure: OPTION=VALUE. This option can be provided multiple times."""
-        print("owpo %s" % arg)
         try:
             key, value = arg.split("=", 1)
         except ValueError:

@@ -13,6 +13,11 @@ def get_schema(name, version):
                                    "db-schemas/%s-v%d.sql" % (name, version))
     return schema_bytes.decode("utf-8")
 
+## def get_upgrader(new_version):
+##     schema_bytes = resource_string("wormhole_transit_relay",
+##                                    "db-schemas/upgrade-to-v%d.sql" % new_version)
+##     return schema_bytes.decode("utf-8")
+
 TARGET_VERSION = 1
 
 def dict_factory(cursor, row):
@@ -24,7 +29,7 @@ def dict_factory(cursor, row):
 def _initialize_db_schema(db, name, target_version):
     """Creates the application schema in the given database.
     """
-    log.msg("populating new database with schema v%s" % target_version)
+    log.msg("populating new database with schema %s v%s" % (name, target_version))
     schema = get_schema(name, target_version)
     db.executescript(schema)
     db.execute("INSERT INTO version (version) VALUES (?)",
@@ -46,9 +51,11 @@ def _open_db_connection(dbfile):
     """
     try:
         db = sqlite3.connect(dbfile)
-    except (EnvironmentError, sqlite3.OperationalError) as e:
+        _initialize_db_connection(db)
+    except (EnvironmentError, sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+        # this indicates that the file is not a compatible database format.
+        # Perhaps it was created with an old version, or it might be junk.
         raise DBError("Unable to create/open db file %s: %s" % (dbfile, e))
-    _initialize_db_connection(db)
     return db
 
 def _get_temporary_dbfile(dbfile):
@@ -86,12 +93,7 @@ def _get_db(dbfile, name, target_version=TARGET_VERSION):
     else:
         db = _atomic_create_and_initialize_db(dbfile, name, target_version)
 
-    try:
-        version = db.execute("SELECT version FROM version").fetchone()["version"]
-    except sqlite3.DatabaseError as e:
-        # this indicates that the file is not a compatible database format.
-        # Perhaps it was created with an old version, or it might be junk.
-        raise DBError("db file is unusable: %s" % e)
+    version = db.execute("SELECT version FROM version").fetchone()["version"]
 
     ## while version < target_version:
     ##     log.msg(" need to upgrade from %s to %s" % (version, target_version))
@@ -118,6 +120,42 @@ def create_or_upgrade_usage_db(dbfile):
     if dbfile is None:
         return None
     return _get_db(dbfile, "usage")
+
+class DBDoesntExist(Exception):
+    pass
+
+def open_existing_db(dbfile):
+    assert dbfile != ":memory:"
+    if not os.path.exists(dbfile):
+        raise DBDoesntExist()
+    return _open_db_connection(dbfile)
+
+class DBAlreadyExists(Exception):
+    pass
+
+def create_channel_db(dbfile):
+    """Create the given db file. Refuse to touch a pre-existing file.
+
+    This is meant for use by migration tools, to create the output target"""
+
+    if dbfile == ":memory:":
+        db = _open_db_connection(dbfile)
+        _initialize_db_schema(db, "channel", TARGET_VERSION)
+    elif os.path.exists(dbfile):
+        raise DBAlreadyExists()
+    else:
+        db = _atomic_create_and_initialize_db(dbfile, "channel", TARGET_VERSION)
+    return db
+
+def create_usage_db(dbfile):
+    if dbfile == ":memory:":
+        db = _open_db_connection(dbfile)
+        _initialize_db_schema(db, "usage", TARGET_VERSION)
+    elif os.path.exists(dbfile):
+        raise DBAlreadyExists()
+    else:
+        db = _atomic_create_and_initialize_db(dbfile, "usage", TARGET_VERSION)
+    return db
 
 def dump_db(db):
     # to let _iterdump work, we need to restore the original row factory
