@@ -91,8 +91,7 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
         now = time.time()
         old = now - CHANNEL_EXPIRATION_TIME
         server.prune_all_apps(now, old)
-        server.dump_stats(now, validity=EXPIRATION_CHECK_PERIOD+60,
-                          rebooted=rebooted)
+        server.dump_stats(now, rebooted=rebooted)
     TimerService(EXPIRATION_CHECK_PERIOD, expire).setServiceParent(parent)
 
     log_requests = config["blur-usage"] is None

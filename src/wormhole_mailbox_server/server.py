@@ -588,7 +588,7 @@ class Server(service.MultiService):
             app.prune(now, old)
         log.msg("app prune ends, %d apps" % len(self._apps))
 
-    def dump_stats(self, now, validity, rebooted):
+    def dump_stats(self, now, rebooted):
         if not self._usage_db:
             return
         # write everything to self._usage_db
@@ -607,10 +607,12 @@ class Server(service.MultiService):
         # have non-websocket connections yet, but when we add them, this needs
         # to be updated. Probably by asking the WebSocketServerFactory to count
         # them.
-        self._usage_db.execute("UPDATE `current` SET"
-                               " `updated`=?,"
-                               " `connections_websocket`=?",
-                               (now, connections))
+        self._usage_db.execute("DELETE FROM `current`")
+        self._usage_db.execute("INSERT INTO `current`"
+                               " (`rebooted`, `updated`, "
+                               "  `connections_websocket`)"
+                               " VALUES(?,?,?)",
+                               (rebooted, now, connections))
         self._usage_db.commit()
 
         # current status: expected to be zero most of the time
