@@ -377,6 +377,10 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         self.assertEqual(err["type"], "error")
         self.assertEqual(err["error"], "only one open per connection")
 
+        # exercise the _stop() handler too, which is a nop
+        mb1.close("side2", "happy", 1)
+        mb1.close("side", "happy", 2)
+
     @inlineCallbacks
     def test_open_crowded(self):
         c1 = yield self.make_client()
