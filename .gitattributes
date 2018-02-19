@@ -1,1 +1,1 @@
-src/wormhole/_version.py export-subst
+src/wormhole_mailbox_server/_version.py export-subst
