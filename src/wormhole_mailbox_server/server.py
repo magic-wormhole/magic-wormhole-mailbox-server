@@ -1,5 +1,5 @@
 from __future__ import print_function, unicode_literals
-import os, random, base64, collections
+import os, random, base64
 from collections import namedtuple
 from twisted.python import log
 from twisted.application import service
@@ -176,8 +176,6 @@ class AppNamespace(object):
         self._log_requests = log_requests
         self._app_id = app_id
         self._mailboxes = {}
-        self._nameplate_counts = collections.defaultdict(int)
-        self._mailbox_counts = collections.defaultdict(int)
         self._allow_list = allow_list
 
     def get_nameplate_ids(self):
@@ -317,7 +315,6 @@ class AppNamespace(object):
                             " VALUES (?, ?,?,?,?)",
                             (self._app_id,
                             u.started, u.total_time, u.waiting_time, u.result))
-        self._nameplate_counts[u.result] += 1
 
     def _summarize_nameplate_usage(self, side_rows, delete_time, pruned):
         times = sorted([row["added"] for row in side_rows])
@@ -396,7 +393,6 @@ class AppNamespace(object):
                    " VALUES (?,?, ?,?,?,?)",
                    (self._app_id, for_nameplate,
                     u.started, u.total_time, u.waiting_time, u.result))
-        self._mailbox_counts[u.result] += 1
 
     def _summarize_mailbox(self, side_rows, delete_time, pruned):
         times = sorted([row["added"] for row in side_rows])
@@ -520,9 +516,6 @@ class AppNamespace(object):
             if self._usage_db:
                 self._usage_db.commit()
         log.msg("  prune complete, modified:", modified)
-
-    def get_counts(self):
-        return (self._nameplate_counts, self._mailbox_counts)
 
     def count_listeners(self):
         return sum(mailbox.count_listeners()
