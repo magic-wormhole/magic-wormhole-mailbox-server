@@ -1329,7 +1329,6 @@ class Summary(unittest.TestCase):
 ##         self.assertEqual(data["rendezvous"]["all_time"]["mailboxes_total"], 0)
 
 class Startup(unittest.TestCase):
-
     @mock.patch('wormhole_mailbox_server.server.log')
     def test_empty(self, fake_log):
         db = create_channel_db(":memory:")
@@ -1337,11 +1336,48 @@ class Startup(unittest.TestCase):
         s.startService()
         try:
             logs = '\n'.join([call[1][0] for call in fake_log.mock_calls])
-            self.assertTrue(
-                'listing of allocated nameplates disallowed' in logs
-            )
+            self.assertIn('listing of allocated nameplates disallowed', logs)
         finally:
             s.stopService()
+
+    @mock.patch('wormhole_mailbox_server.server.log')
+    def test_allow_list(self, fake_log):
+        db = create_channel_db(":memory:")
+        s = make_server(db, allow_list=True)
+        s.startService()
+        try:
+            logs = '\n'.join([call[1][0] for call in fake_log.mock_calls])
+            self.assertNotIn('listing of allocated nameplates disallowed', logs)
+        finally:
+            s.stopService()
+
+    @mock.patch('wormhole_mailbox_server.server.log')
+    def test_blur_usage(self, fake_log):
+        db = create_channel_db(":memory:")
+        s = make_server(db, blur_usage=60, allow_list=True)
+        s.startService()
+        try:
+            logs = '\n'.join([call[1][0] for call in fake_log.mock_calls])
+            self.assertNotIn('listing of allocated nameplates disallowed', logs)
+            self.assertIn('blurring access times to 60 seconds', logs)
+        finally:
+            s.stopService()
+
+class MakeServer(unittest.TestCase):
+    def test_welcome_empty(self):
+        db = create_channel_db(":memory:")
+        s = make_server(db)
+        self.assertEqual(s.get_welcome(), {})
+
+    def test_welcome_error(self):
+        db = create_channel_db(":memory:")
+        s = make_server(db, signal_error="error!")
+        self.assertEqual(s.get_welcome(), {"error": "error!"})
+
+    def test_welcome_advertise_version(self):
+        db = create_channel_db(":memory:")
+        s = make_server(db, advertise_version="version")
+        self.assertEqual(s.get_welcome(), {"current_cli_version": "version"})
 
 # exercise _find_available_nameplate_id failing
 # exercise CrowdedError
@@ -1349,7 +1385,7 @@ class Startup(unittest.TestCase):
 # exercise _summarize_mailbox = quiet (0 sides)
 # exercise AppNamespace._shutdown
 #  so Server.stopService
-# test blur_usage/not on Server
-# test make_server(signal_error=)
-# exercise dump_stats (with/without usagedb)
+## test blur_usage/not on Server
+## test make_server(signal_error=)
+## exercise dump_stats (with/without usagedb)
 
