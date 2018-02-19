@@ -73,6 +73,17 @@ class Server(_Util, ServerBase, unittest.TestCase):
         biggest = max(nids)
         self.assert_(1000 <= biggest < 1000000, biggest)
 
+    def test_nameplate_allocation_failure(self):
+        app = self._server.get_app("appid")
+        # pretend to fill all 1M <7-digit nameplates, it should give up
+        # eventually
+        def _get_nameplate_ids():
+            return set(("%d" % id_int for id_int in range(1, 1000*1000)))
+        app._get_nameplate_ids = _get_nameplate_ids
+        with self.assertRaises(ValueError) as e:
+            app.allocate_nameplate("side1", 0)
+        self.assertIn("unable to find a free nameplate-id", str(e.exception))
+
     def test_nameplate(self):
         app = self._server.get_app("appid")
         name = app.allocate_nameplate("side1", 0)
