@@ -7,6 +7,7 @@ CREATE TABLE `current`
 (
  `rebooted` INTEGER, -- seconds since epoch of most recent reboot
  `updated` INTEGER, -- when `current` was last updated
+ `blur_time` INTEGER, -- `started` is rounded to this, or None
  `connections_websocket` INTEGER -- number of live clients via websocket
 );
 

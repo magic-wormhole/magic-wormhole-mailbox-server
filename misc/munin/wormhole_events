@@ -43,17 +43,25 @@ assert os.path.exists(usagedbfile)
 usage_db = sqlite3.connect(usagedbfile)
 
 MINUTE = 60.0
-updated,rebooted = usage_db.execute("SELECT `updated`,`rebooted` FROM `current`").fetchone()
+updated,rebooted,blur = usage_db.execute(
+    "SELECT `updated`,`rebooted`,`blur_time` FROM `current`").fetchone()
 if time.time() > updated + 5*MINUTE:
     sys.exit(1) # expired
+if blur is not None:
+    rebooted = blur * (rebooted // blur)
+    # After a reboot, the operator will get to see events that happen during
+    # the first blur window (without this adjustment, those events would be
+    # hidden since they'd appear to start before the reboot). The downside is
+    # that the counter won't drop down to zero at a reboot (if there are recent
+    # events).
 
 #r = usage_db.execute("SELECT COUNT(`mood`) FROM `mailboxes` WHERE `started` > ?",
 #                     (rebooted,)).fetchone()
 for mood in ["happy", "scary", "lonely", "errory", "pruney", "crowded"]:
-    r = usage_db.execute("SELECT COUNT() FROM `mailboxes` WHERE `started` > ?"
+    r = usage_db.execute("SELECT COUNT() FROM `mailboxes` WHERE `started` >= ?"
                          " AND `result` = ?",
                         (rebooted, mood)).fetchone()
     print("%s.value", r)
-r = usage_db.execute("SELECT COUNT() FROM `mailboxes` WHERE `started` > ?",
+r = usage_db.execute("SELECT COUNT() FROM `mailboxes` WHERE `started` >= ?",
                      (rebooted,)).fetchone()
 print("total.value", r)

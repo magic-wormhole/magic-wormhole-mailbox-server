@@ -602,10 +602,10 @@ class Server(service.MultiService):
         # them.
         self._usage_db.execute("DELETE FROM `current`")
         self._usage_db.execute("INSERT INTO `current`"
-                               " (`rebooted`, `updated`, "
+                               " (`rebooted`, `updated`, `blur_time`,"
                                "  `connections_websocket`)"
-                               " VALUES(?,?,?)",
-                               (rebooted, now, connections))
+                               " VALUES(?,?,?,?)",
+                               (rebooted, now, self._blur_usage, connections))
         self._usage_db.commit()
 
         # current status: expected to be zero most of the time

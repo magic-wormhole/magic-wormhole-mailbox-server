@@ -17,7 +17,7 @@ class Current(_Make, unittest.TestCase):
         s, db, app = self.make()
         s.dump_stats(456, rebooted=451)
         self.assertEqual(db.execute("SELECT * FROM `current`").fetchall(),
-                         [dict(rebooted=451, updated=456,
+                         [dict(rebooted=451, updated=456, blur_time=None,
                                connections_websocket=0),
                           ])
 
@@ -26,7 +26,7 @@ class Current(_Make, unittest.TestCase):
         app.open_mailbox("m1", "s1", 1)
         s.dump_stats(456, rebooted=451)
         self.assertEqual(db.execute("SELECT * FROM `current`").fetchall(),
-                         [dict(rebooted=451, updated=456,
+                         [dict(rebooted=451, updated=456, blur_time=None,
                                connections_websocket=0),
                           ])
 
@@ -36,7 +36,7 @@ class Current(_Make, unittest.TestCase):
         mbox.add_listener("h1", lambda sm: None, lambda: None)
         s.dump_stats(456, rebooted=451)
         self.assertEqual(db.execute("SELECT * FROM `current`").fetchall(),
-                         [dict(rebooted=451, updated=456,
+                         [dict(rebooted=451, updated=456, blur_time=None,
                                connections_websocket=1),
                           ])
 
