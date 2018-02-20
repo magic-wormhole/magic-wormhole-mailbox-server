@@ -1,4 +1,5 @@
 # Magic Wormhole Mailbox Server
+[![PyPI](http://img.shields.io/pypi/v/magic-wormhole-mailbox-server.svg)](https://pypi.python.org/pypi/magic-wormhole-mailbox-server)
 [![Build Status](https://travis-ci.org/warner/magic-wormhole-mailbox-server.svg?branch=master)](https://travis-ci.org/warner/magic-wormhole-mailbox-server)
 [![Windows Build Status](https://ci.appveyor.com/api/projects/status/mfnn5rsyfnrq576a/branch/master?svg=true)](https://ci.appveyor.com/project/warner/magic-wormhole-mailbox-server)
 [![codecov.io](https://codecov.io/github/warner/magic-wormhole-mailbox-server/coverage.svg?branch=master)](https://codecov.io/github/warner/magic-wormhole-mailbox-server?branch=master)
