@@ -57,6 +57,7 @@ docs/_build/
 target/
 /twistd.pid
 /relay.sqlite
+/usage.sqlite
 
 # Virtual environment stuff
 venv/
