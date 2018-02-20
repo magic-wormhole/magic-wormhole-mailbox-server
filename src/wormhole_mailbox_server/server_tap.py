@@ -99,6 +99,6 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
                            config["websocket-protocol-options"])
     ep = endpoints.serverFromString(reactor, config["port"]) # to listen
     StreamServerEndpointService(ep, site).setServiceParent(parent)
-    log.msg("websocket listening on /wormhole-relay/ws")
+    log.msg("websocket listening on ws://HOSTNAME:PORT/v1")
 
     return parent
