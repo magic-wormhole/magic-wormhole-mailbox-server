@@ -18,6 +18,15 @@ automatically, allowing the server to be rebooted without losing state). An
 optional "usage DB" tracks historical activity for status monitoring and
 operational maintenance.
 
+## Installation
+
+```
+$ pip install magic-wormhole-mailbox-server
+```
+
+For the installation from source, ``clone`` this repo, ``cd`` into the folder,
+``python3 setup.py build`` and finally ``sudo python3 setup.py install``. 
+
 ## Running A Server
 
 Note that the standard [Magic-Wormhole](http://magic-wormhole.io)
