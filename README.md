@@ -21,14 +21,14 @@ operational maintenance.
 ## Installation
 
 ```
-$ pip install magic-wormhole-mailbox-server
+pip install magic-wormhole-mailbox-server
 ```
 
 For the installation from source, ``clone`` this repo, ``cd`` into the folder,
 ``python3 setup.py build`` and finally ``sudo python3 setup.py install``. 
 
 ## Running A Server
-
+ 
 Note that the standard [Magic-Wormhole](http://magic-wormhole.io)
 command-line tool is preconfigured to use a mailbox server hosted by the
 project, so running your own server is only necessary for custom applications
