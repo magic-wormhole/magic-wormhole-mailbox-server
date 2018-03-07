@@ -11,7 +11,7 @@ messages. Bulk data is sent over a direct TCP connection, or through a
 [transit-relay](https://github.com/warner/magic-wormhole-transit-relay).
 
 Clients connect with WebSockets, for low-latency delivery in the happy case
-where both clients are attached at the same time. Message are stored in to
+where both clients are attached at the same time. Message are stored to
 enable non-simultaneous clients to make forward progress. The server uses a
 small SQLite database for persistence (and clients will reconnect
 automatically, allowing the server to be rebooted without losing state). An
@@ -24,11 +24,35 @@ operational maintenance.
 pip install magic-wormhole-mailbox-server
 ```
 
+You either want to do this into a "user" environment (putting the ``twist``
+and ``twistd`` executables in ``~/.local/bin/``) like this:
+
+```
+pip install --user magic-wormhole-mailbox-server
+```
+
+or put it into a virtualenv, to avoid modifying the system python's
+libraries, like this:
+
+```
+virtualenv venv
+source venv/bin/activate
+pip install magic-wormhole-mailbox-server
+```
+
+You probably *don't* want to use ``sudo`` when you run ``pip``, since the
+dependencies that get installed may conflict with other python programs on
+your computer. ``pipsi`` is usually a good way to install into isolated
+environments, but unfortunately it doesn't work for
+magic-wormhole-mailbox-server, because we don't have a dedicated command to
+start the server (``twist``, described below, comes from the ``twisted``
+package, and pipsi doesn't expose executables from dependencies).
+
 For the installation from source, ``clone`` this repo, ``cd`` into the folder,
-``python3 setup.py build`` and finally ``sudo python3 setup.py install``. 
+create and activate a virtualenv, and run ``pip install .``.
 
 ## Running A Server
- 
+
 Note that the standard [Magic-Wormhole](http://magic-wormhole.io)
 command-line tool is preconfigured to use a mailbox server hosted by the
 project, so running your own server is only necessary for custom applications
