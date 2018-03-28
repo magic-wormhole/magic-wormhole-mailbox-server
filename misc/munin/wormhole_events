@@ -13,7 +13,7 @@ import os, sys, time, sqlite3
 CONFIG = """\
 graph_title Magic-Wormhole Mailbox Events (since reboot)
 graph_vlabel Events Since Reboot
-graph_category network
+graph_category wormhole
 happy.label Happy
 happy.draw LINE2
 happy.type GAUGE

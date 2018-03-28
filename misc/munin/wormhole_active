@@ -14,7 +14,7 @@ import os, sys, time, sqlite3
 CONFIG = """\
 graph_title Magic-Wormhole Active Channels
 graph_vlabel Channels
-graph_category network
+graph_category wormhole
 nameplates.label Nameplates
 nameplates.draw LINE2
 nameplates.type GAUGE

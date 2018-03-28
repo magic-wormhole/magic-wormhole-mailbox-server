@@ -13,7 +13,7 @@ import os, sys, time, sqlite3
 CONFIG = """\
 graph_title Magic-Wormhole Server Errors
 graph_vlabel Events Since Reboot
-graph_category network
+graph_category wormhole
 nameplates.label Nameplate Errors (total)
 nameplates.draw LINE1
 nameplates.type GAUGE
