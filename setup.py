@@ -4,13 +4,26 @@ import versioneer
 
 commands = versioneer.get_cmdclass()
 
+trove_classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Security :: Cryptography",
+    "Topic :: System :: Networking",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+    ]
+
 setup(name="magic-wormhole-mailbox-server",
       version=versioneer.get_version(),
       description="Securely transfer data between computers",
+      long_description=open('README.md', 'rU').read(),
+      long_description_content_type='text/markdown',
       author="Brian Warner",
       author_email="warner-magic-wormhole@lothar.com",
       license="MIT",
       url="https://github.com/warner/magic-wormhole-mailbox-server",
+      classifiers=trove_classifiers,
       package_dir={"": "src"},
       packages=["wormhole_mailbox_server",
                 "wormhole_mailbox_server.test",
@@ -24,7 +37,7 @@ setup(name="magic-wormhole-mailbox-server",
           "autobahn[twisted] >= 0.14.1",
       ],
       extras_require={
-          ':sys_platform=="win32"': ["pypiwin32"],
+          ':sys_platform=="win32"': ["pywin32"],
           "dev": ["mock", "treq", "tox", "pyflakes"],
       },
       test_suite="wormhole_mailbox_server.test",
