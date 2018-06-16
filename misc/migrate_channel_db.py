@@ -35,22 +35,6 @@ target_db = create_channel_db("relay.sqlite")
 
 num_rows = 0
 
-for row in source_db.execute("SELECT * FROM `nameplates`").fetchall():
-    target_db.execute("INSERT INTO `nameplates`"
-                      " (`id`, `app_id`, `name`, `mailbox_id`, `request_id`)"
-                      " VALUES(?,?,?,?,?)",
-                      (row["id"], row["app_id"], row["name"],
-                       row["mailbox_id"], row["request_id"]))
-    num_rows += 1
-
-for row in source_db.execute("SELECT * FROM `nameplate_sides`").fetchall():
-    target_db.execute("INSERT INTO `nameplate_sides`"
-                      " (`nameplates_id`, `claimed`, `side`, `added`)"
-                      " VALUES(?,?,?,?)",
-                      (row["nameplates_id"], row["claimed"], row["side"],
-                       row["added"]))
-    num_rows += 1
-
 for row in source_db.execute("SELECT * FROM `mailboxes`").fetchall():
     target_db.execute("INSERT INTO `mailboxes`"
                       " (`app_id`, `id`, `updated`, `for_nameplate`)"
@@ -65,6 +49,22 @@ for row in source_db.execute("SELECT * FROM `mailbox_sides`").fetchall():
                       " VALUES(?,?,?,?,?)",
                       (row["mailbox_id"], row["opened"], row["side"],
                        row["added"], row["mood"]))
+    num_rows += 1
+
+for row in source_db.execute("SELECT * FROM `nameplates`").fetchall():
+    target_db.execute("INSERT INTO `nameplates`"
+                      " (`id`, `app_id`, `name`, `mailbox_id`, `request_id`)"
+                      " VALUES(?,?,?,?,?)",
+                      (row["id"], row["app_id"], row["name"],
+                       row["mailbox_id"], row["request_id"]))
+    num_rows += 1
+
+for row in source_db.execute("SELECT * FROM `nameplate_sides`").fetchall():
+    target_db.execute("INSERT INTO `nameplate_sides`"
+                      " (`nameplates_id`, `claimed`, `side`, `added`)"
+                      " VALUES(?,?,?,?)",
+                      (row["nameplates_id"], row["claimed"], row["side"],
+                       row["added"]))
     num_rows += 1
 
 for row in source_db.execute("SELECT * FROM `messages`").fetchall():
