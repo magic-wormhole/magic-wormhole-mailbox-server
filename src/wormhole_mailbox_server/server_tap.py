@@ -65,7 +65,7 @@ MINUTE = 60*SECONDS
 
 # CHANNEL_EXPIRATION_TIME should be longer than EXPIRATION_CHECK_PERIOD
 CHANNEL_EXPIRATION_TIME = 11*MINUTE
-EXPIRATION_CHECK_PERIOD = 10*MINUTE
+EXPIRATION_CHECK_PERIOD = 5*MINUTE
 
 def makeService(config, channel_db="relay.sqlite", reactor=reactor):
     increase_rlimits()

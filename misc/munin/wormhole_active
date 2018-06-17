@@ -40,7 +40,7 @@ channel_db = sqlite3.connect(channeldbfile)
 
 MINUTE = 60.0
 updated,rebooted = usage_db.execute("SELECT `updated`,`rebooted` FROM `current`").fetchone()
-if time.time() > updated + 11*MINUTE:
+if time.time() > updated + 6*MINUTE:
     sys.exit(1) # expired
 
 nameplates = channel_db.execute("SELECT COUNT() FROM `nameplates`").fetchone()[0]

@@ -45,7 +45,7 @@ usage_db = sqlite3.connect(usagedbfile)
 MINUTE = 60.0
 updated,rebooted,blur = usage_db.execute(
     "SELECT `updated`,`rebooted`,`blur_time` FROM `current`").fetchone()
-if time.time() > updated + 11*MINUTE:
+if time.time() > updated + 6*MINUTE:
     sys.exit(1) # expired
 if blur is not None:
     rebooted = blur * (rebooted // blur)
