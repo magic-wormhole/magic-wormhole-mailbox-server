@@ -38,14 +38,20 @@ updated,rebooted = usage_db.execute("SELECT `updated`,`rebooted` FROM `current`"
 if time.time() > updated + 6*MINUTE:
     sys.exit(1) # expired
 
-r1 = usage_db.execute("SELECT COUNT() FROM `nameplates`").fetchone()[0]
+r1 = usage_db.execute("SELECT COUNT() FROM `nameplates` WHERE `started` >= ?",
+                      (rebooted,)).fetchone()[0]
 r2 = usage_db.execute("SELECT COUNT() FROM `nameplates`"
-                      " WHERE `result` = 'happy'").fetchone()[0]
+                      " WHERE `started` >= ?"
+                      "  AND `result` = 'happy'",
+                      (rebooted,)).fetchone()[0]
 print("nameplates.value", (r1 - r2))
-r1 = usage_db.execute("SELECT COUNT() FROM `mailboxes`").fetchone()[0]
-r2 = usage_db.execute("SELECT COUNT() FROM `mailboxes`"
-                      " WHERE `result` = 'happy'").fetchone()[0]
+r1 = usage_db.execute("SELECT COUNT() FROM `mailboxes` WHERE `started` >= ?",
+                      (rebooted,)).fetchone()[0]
+r2 = usage_db.execute("SELECT COUNT() FROM `mailboxes` WHERE `started` >= ?"
+                      " AND `result` = 'happy'",
+                      (rebooted,)).fetchone()[0]
 print("mailboxes.value", (r1 - r2))
-r = usage_db.execute("SELECT COUNT() FROM `mailboxes`"
-                     " WHERE `result` = 'scary'").fetchone()[0]
+r = usage_db.execute("SELECT COUNT() FROM `mailboxes` WHERE `started` >= ?"
+                     " AND `result` = 'scary'",
+                     (rebooted,)).fetchone()[0]
 print("mailboxes_scary.value", r)
