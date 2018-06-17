@@ -45,7 +45,7 @@ usage_db = sqlite3.connect(usagedbfile)
 MINUTE = 60.0
 updated,rebooted,blur = usage_db.execute(
     "SELECT `updated`,`rebooted`,`blur_time` FROM `current`").fetchone()
-if time.time() > updated + 5*MINUTE:
+if time.time() > updated + 11*MINUTE:
     sys.exit(1) # expired
 if blur is not None:
     rebooted = blur * (rebooted // blur)
@@ -60,8 +60,8 @@ if blur is not None:
 for mood in ["happy", "scary", "lonely", "errory", "pruney", "crowded"]:
     r = usage_db.execute("SELECT COUNT() FROM `mailboxes` WHERE `started` >= ?"
                          " AND `result` = ?",
-                        (rebooted, mood)).fetchone()
-    print("%s.value", r)
+                        (rebooted, mood)).fetchone()[0]
+    print("%s.value" % mood, r)
 r = usage_db.execute("SELECT COUNT() FROM `mailboxes` WHERE `started` >= ?",
-                     (rebooted,)).fetchone()
+                     (rebooted,)).fetchone()[0]
 print("total.value", r)

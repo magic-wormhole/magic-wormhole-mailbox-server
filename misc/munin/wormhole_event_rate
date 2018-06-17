@@ -8,7 +8,8 @@ env.usagedb /path/to/your/wormhole/server/usage.sqlite
 """
 
 from __future__ import print_function
-import os, sys, time, sqlite3, defaultdict
+import os, sys, time, sqlite3
+from collections import defaultdict
 
 CONFIG = """\
 graph_title Magic-Wormhole Server Events
@@ -44,13 +45,13 @@ usage_db = sqlite3.connect(usagedbfile)
 
 MINUTE = 60.0
 updated,rebooted = usage_db.execute("SELECT `updated`,`rebooted` FROM `current`").fetchone()
-if time.time() > updated + 5*MINUTE:
+if time.time() > updated + 11*MINUTE:
     sys.exit(1) # expired
 
 atm = defaultdict(int)
 for mood in ["happy", "scary", "lonely", "errory", "pruney", "crowded"]:
     atm[mood] = usage_db.execute("SELECT COUNT() FROM `mailboxes`"
-                                 " WHERE `result` = ?", (mood,)).fetchone()
+                                 " WHERE `result` = ?", (mood,)).fetchone()[0]
 
 print("happy.value", atm["happy"])
 print("incomplete.value", (atm["pruney"] + atm["lonely"]))

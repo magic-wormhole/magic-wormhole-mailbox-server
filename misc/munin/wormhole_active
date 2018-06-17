@@ -40,12 +40,12 @@ channel_db = sqlite3.connect(channeldbfile)
 
 MINUTE = 60.0
 updated,rebooted = usage_db.execute("SELECT `updated`,`rebooted` FROM `current`").fetchone()
-if time.time() > updated + 5*MINUTE:
+if time.time() > updated + 11*MINUTE:
     sys.exit(1) # expired
 
-nameplates = channel_db.execute("SELECT COUNT() FROM `nameplates`").fetchone()
-mailboxes = channel_db.execute("SELECT COUNT() FROM `mailboxes`").fetchone()
-messages = channel_db.execute("SELECT COUNT() FROM `messages`").fetchone()
+nameplates = channel_db.execute("SELECT COUNT() FROM `nameplates`").fetchone()[0]
+mailboxes = channel_db.execute("SELECT COUNT() FROM `mailboxes`").fetchone()[0]
+messages = channel_db.execute("SELECT COUNT() FROM `messages`").fetchone()[0]
 
 print("nameplates.value", nameplates)
 print("mailboxes.value", mailboxes)
