@@ -132,7 +132,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
             if mtype == "ping":
                 return self.handle_ping(msg)
             if mtype == "bind":
-                return self.handle_bind(msg)
+                return self.handle_bind(msg, server_rx)
 
             if not self._app:
                 raise Error("must bind first")
@@ -161,7 +161,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
             raise Error("ping requires 'ping'")
         self.send("pong", pong=msg["ping"])
 
-    def handle_bind(self, msg):
+    def handle_bind(self, msg, server_rx):
         if self._app or self._side:
             raise Error("already bound")
         if "appid" not in msg:
@@ -170,6 +170,9 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
             raise Error("bind requires 'side'")
         self._app = self.factory.server.get_app(msg["appid"])
         self._side = msg["side"]
+        client_version = msg.get("client_version") # ("python", "0.xyz")
+        if client_version:
+            self._app.log_client_version(server_rx, self._side, client_version)
 
 
     def handle_list(self):

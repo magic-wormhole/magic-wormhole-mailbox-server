@@ -19,7 +19,7 @@ def get_schema(name, version):
 ##     return schema_bytes.decode("utf-8")
 
 CHANNELDB_TARGET_VERSION = 1
-USAGEDB_TARGET_VERSION = 1
+USAGEDB_TARGET_VERSION = 2
 
 def dict_factory(cursor, row):
     d = {}

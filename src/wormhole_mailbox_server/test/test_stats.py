@@ -40,6 +40,28 @@ class Current(_Make, unittest.TestCase):
                                connections_websocket=1),
                           ])
 
+class ClientVersion(_Make, unittest.TestCase):
+    def test_add_version(self):
+        s, db, app = self.make()
+        app.log_client_version(451, "side1", ("python", "1.2.3"))
+        self.assertEqual(db.execute("SELECT * FROM `client_versions`").fetchall(),
+                         [dict(app_id="appid", connect_time=451, side="side1",
+                               implementation="python", version="1.2.3")])
+
+    def test_add_version_extra_fields(self):
+        s, db, app = self.make()
+        app.log_client_version(451, "side1", ("python", "1.2.3", "extra"))
+        self.assertEqual(db.execute("SELECT * FROM `client_versions`").fetchall(),
+                         [dict(app_id="appid", connect_time=451, side="side1",
+                               implementation="python", version="1.2.3")])
+
+    def test_blur(self):
+        s, db, app = self.make(blur_usage=100)
+        app.log_client_version(451, "side1", ("python", "1.2.3"))
+        self.assertEqual(db.execute("SELECT * FROM `client_versions`").fetchall(),
+                         [dict(app_id="appid", connect_time=400, side="side1",
+                               implementation="python", version="1.2.3")])
+
 class Nameplate(_Make, unittest.TestCase):
     def test_nameplate_happy(self):
         s, db, app = self.make()
