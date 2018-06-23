@@ -3,39 +3,40 @@ import os
 from twisted.python import filepath
 from twisted.trial import unittest
 from .. import database
-from ..database import _get_db, TARGET_VERSION, dump_db, DBError
+from ..database import (CHANNELDB_TARGET_VERSION, #USAGEDB_TARGET_VERSION,
+                        _get_db, dump_db, DBError)
 
 class Get(unittest.TestCase):
     def test_create_default(self):
         db_url = ":memory:"
-        db = _get_db(db_url, "channel")
+        db = _get_db(db_url, "channel", CHANNELDB_TARGET_VERSION)
         rows = db.execute("SELECT * FROM version").fetchall()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["version"], TARGET_VERSION)
+        self.assertEqual(rows[0]["version"], CHANNELDB_TARGET_VERSION)
 
     def test_open_existing_file(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
         fn = os.path.join(basedir, "normal.db")
-        db = _get_db(fn, "channel")
+        db = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
         rows = db.execute("SELECT * FROM version").fetchall()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["version"], TARGET_VERSION)
-        db2 = _get_db(fn, "channel")
+        self.assertEqual(rows[0]["version"], CHANNELDB_TARGET_VERSION)
+        db2 = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
         rows = db2.execute("SELECT * FROM version").fetchall()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["version"], TARGET_VERSION)
+        self.assertEqual(rows[0]["version"], CHANNELDB_TARGET_VERSION)
 
     def test_open_bad_version(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
         fn = os.path.join(basedir, "old.db")
-        db = _get_db(fn, "channel")
+        db = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
         db.execute("UPDATE version SET version=999")
         db.commit()
 
         with self.assertRaises(DBError) as e:
-            _get_db(fn, "channel")
+            _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
         self.assertIn("Unable to handle db version 999", str(e.exception))
 
     def test_open_corrupt(self):
@@ -45,7 +46,7 @@ class Get(unittest.TestCase):
         with open(fn, "wb") as f:
             f.write(b"I am not a database")
         with self.assertRaises(DBError) as e:
-            _get_db(fn, "channel")
+            _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
         self.assertIn("not a database", str(e.exception))
 
     def test_failed_create_allows_subsequent_create(self):
@@ -53,47 +54,42 @@ class Get(unittest.TestCase):
         dbfile = filepath.FilePath(self.mktemp())
         self.assertRaises(Exception, lambda: _get_db(dbfile.path))
         patch.restore()
-        _get_db(dbfile.path, "channel")
+        _get_db(dbfile.path, "channel", CHANNELDB_TARGET_VERSION)
 
     def OFF_test_upgrade(self): # disabled until we add a v2 schema
         basedir = self.mktemp()
         os.mkdir(basedir)
         fn = os.path.join(basedir, "upgrade.db")
-        self.assertNotEqual(TARGET_VERSION, 2)
+        self.assertNotEqual(CHANNELDB_TARGET_VERSION, 1)
 
         # create an old-version DB in a file
-        db = _get_db(fn, "channel", 2)
+        db = _get_db(fn, "channel", 1)
         rows = db.execute("SELECT * FROM version").fetchall()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["version"], 2)
+        self.assertEqual(rows[0]["version"], 1)
         del db
 
         # then upgrade the file to the latest version
-        dbA = _get_db(fn, "channel", TARGET_VERSION)
+        dbA = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
         rows = dbA.execute("SELECT * FROM version").fetchall()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["version"], TARGET_VERSION)
+        self.assertEqual(rows[0]["version"], CHANNELDB_TARGET_VERSION)
         dbA_text = dump_db(dbA)
         del dbA
 
         # make sure the upgrades got committed to disk
-        dbB = _get_db(fn, "channel", TARGET_VERSION)
+        dbB = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
         dbB_text = dump_db(dbB)
         del dbB
         self.assertEqual(dbA_text, dbB_text)
 
         # The upgraded schema should be equivalent to that of a new DB.
-        # However a text dump will differ because ALTER TABLE always appends
-        # the new column to the end of a table, whereas our schema puts it
-        # somewhere in the middle (wherever it fits naturally). Also ALTER
-        # TABLE doesn't include comments.
-        if False:
-            latest_db = _get_db(":memory:", "channel", TARGET_VERSION)
-            latest_text = dump_db(latest_db)
-            with open("up.sql","w") as f: f.write(dbA_text)
-            with open("new.sql","w") as f: f.write(latest_text)
-            # check with "diff -u _trial_temp/up.sql _trial_temp/new.sql"
-            self.assertEqual(dbA_text, latest_text)
+        latest_db = _get_db(":memory:", "channel", CHANNELDB_TARGET_VERSION)
+        latest_text = dump_db(latest_db)
+        with open("up.sql","w") as f: f.write(dbA_text)
+        with open("new.sql","w") as f: f.write(latest_text)
+        # debug with "diff -u _trial_temp/up.sql _trial_temp/new.sql"
+        self.assertEqual(dbA_text, latest_text)
 
 class CreateChannel(unittest.TestCase):
     def test_memory(self):
