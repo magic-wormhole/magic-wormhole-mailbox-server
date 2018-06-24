@@ -91,6 +91,24 @@ class Get(unittest.TestCase):
         # debug with "diff -u _trial_temp/up.sql _trial_temp/new.sql"
         self.assertEqual(dbA_text, latest_text)
 
+    def test_upgrade_fails(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "upgrade.db")
+        self.assertNotEqual(USAGEDB_TARGET_VERSION, 1)
+
+        # create an old-version DB in a file
+        db = _get_db(fn, "usage", 1)
+        rows = db.execute("SELECT * FROM version").fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["version"], 1)
+        del db
+
+        # then upgrade the file to a too-new version, for which we have no
+        # upgrader
+        with self.assertRaises(DBError):
+            _get_db(fn, "usage", USAGEDB_TARGET_VERSION+1)
+
 class CreateChannel(unittest.TestCase):
     def test_memory(self):
         db = database.create_channel_db(":memory:")

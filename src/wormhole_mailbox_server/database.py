@@ -14,9 +14,12 @@ def get_schema(name, version):
     return schema_bytes.decode("utf-8")
 
 def get_upgrader(name, new_version):
-    schema_bytes = resource_string("wormhole_mailbox_server",
-                                   "db-schemas/upgrade-%s-to-v%d.sql" %
-                                   (name, new_version))
+    try:
+        schema_bytes = resource_string("wormhole_mailbox_server",
+                                       "db-schemas/upgrade-%s-to-v%d.sql" %
+                                       (name, new_version))
+    except FileNotFoundError:
+        raise ValueError("no upgrader for %d" % new_version)
     return schema_bytes.decode("utf-8")
 
 CHANNELDB_TARGET_VERSION = 1
