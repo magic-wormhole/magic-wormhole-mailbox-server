@@ -1,5 +1,5 @@
 from __future__ import unicode_literals
-import os
+import os, shutil
 import sqlite3
 import tempfile
 from pkg_resources import resource_string
@@ -13,10 +13,11 @@ def get_schema(name, version):
                                    "db-schemas/%s-v%d.sql" % (name, version))
     return schema_bytes.decode("utf-8")
 
-## def get_upgrader(new_version):
-##     schema_bytes = resource_string("wormhole_transit_relay",
-##                                    "db-schemas/upgrade-to-v%d.sql" % new_version)
-##     return schema_bytes.decode("utf-8")
+def get_upgrader(name, new_version):
+    schema_bytes = resource_string("wormhole_mailbox_server",
+                                   "db-schemas/upgrade-%s-to-v%d.sql" %
+                                   (name, new_version))
+    return schema_bytes.decode("utf-8")
 
 CHANNELDB_TARGET_VERSION = 1
 USAGEDB_TARGET_VERSION = 2
@@ -96,18 +97,23 @@ def _get_db(dbfile, name, target_version):
 
     version = db.execute("SELECT version FROM version").fetchone()["version"]
 
-    ## while version < target_version:
-    ##     log.msg(" need to upgrade from %s to %s" % (version, target_version))
-    ##     try:
-    ##         upgrader = get_upgrader(version+1)
-    ##     except ValueError: # ResourceError??
-    ##         log.msg(" unable to upgrade %s to %s" % (version, version+1))
-    ##         raise DBError("Unable to upgrade %s to version %s, left at %s"
-    ##                       % (dbfile, version+1, version))
-    ##     log.msg(" executing upgrader v%s->v%s" % (version, version+1))
-    ##     db.executescript(upgrader)
-    ##     db.commit()
-    ##     version = version+1
+    if version < target_version and dbfile != ":memory:":
+        backup_fn = "%s-backup-v%d" % (dbfile, version)
+        log.msg(" storing backup of v%d db in %s" % (version, backup_fn))
+        shutil.copy(dbfile, backup_fn)
+
+    while version < target_version:
+        log.msg(" need to upgrade from %s to %s" % (version, target_version))
+        try:
+            upgrader = get_upgrader(name, version+1)
+        except ValueError:
+            log.msg(" unable to upgrade %s to %s" % (version, version+1))
+            raise DBError("Unable to upgrade %s to version %s, left at %s"
+                          % (dbfile, version+1, version))
+        log.msg(" executing upgrader v%s->v%s" % (version, version+1))
+        db.executescript(upgrader)
+        db.commit()
+        version = version+1
 
     if version != target_version:
         raise DBError("Unable to handle db version %s" % version)

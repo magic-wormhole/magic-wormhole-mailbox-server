@@ -3,7 +3,7 @@ import os
 from twisted.python import filepath
 from twisted.trial import unittest
 from .. import database
-from ..database import (CHANNELDB_TARGET_VERSION, #USAGEDB_TARGET_VERSION,
+from ..database import (CHANNELDB_TARGET_VERSION, USAGEDB_TARGET_VERSION,
                         _get_db, dump_db, DBError)
 
 class Get(unittest.TestCase):
@@ -56,35 +56,35 @@ class Get(unittest.TestCase):
         patch.restore()
         _get_db(dbfile.path, "channel", CHANNELDB_TARGET_VERSION)
 
-    def OFF_test_upgrade(self): # disabled until we add a v2 schema
+    def test_upgrade(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
         fn = os.path.join(basedir, "upgrade.db")
-        self.assertNotEqual(CHANNELDB_TARGET_VERSION, 1)
+        self.assertNotEqual(USAGEDB_TARGET_VERSION, 1)
 
         # create an old-version DB in a file
-        db = _get_db(fn, "channel", 1)
+        db = _get_db(fn, "usage", 1)
         rows = db.execute("SELECT * FROM version").fetchall()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["version"], 1)
         del db
 
         # then upgrade the file to the latest version
-        dbA = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
+        dbA = _get_db(fn, "usage", USAGEDB_TARGET_VERSION)
         rows = dbA.execute("SELECT * FROM version").fetchall()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["version"], CHANNELDB_TARGET_VERSION)
+        self.assertEqual(rows[0]["version"], USAGEDB_TARGET_VERSION)
         dbA_text = dump_db(dbA)
         del dbA
 
         # make sure the upgrades got committed to disk
-        dbB = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
+        dbB = _get_db(fn, "usage", USAGEDB_TARGET_VERSION)
         dbB_text = dump_db(dbB)
         del dbB
         self.assertEqual(dbA_text, dbB_text)
 
         # The upgraded schema should be equivalent to that of a new DB.
-        latest_db = _get_db(":memory:", "channel", CHANNELDB_TARGET_VERSION)
+        latest_db = _get_db(":memory:", "usage", USAGEDB_TARGET_VERSION)
         latest_text = dump_db(latest_db)
         with open("up.sql","w") as f: f.write(dbA_text)
         with open("new.sql","w") as f: f.write(latest_text)
