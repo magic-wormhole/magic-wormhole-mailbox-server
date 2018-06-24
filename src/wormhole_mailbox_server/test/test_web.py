@@ -7,6 +7,7 @@ from twisted.internet import defer, reactor
 from twisted.internet.defer import inlineCallbacks, returnValue
 from ..web import make_web_server
 from ..server import SidedMessage
+from ..database import create_or_upgrade_usage_db
 from .common import ServerBase, _Util
 from .ws_client import WSFactory
 
@@ -90,8 +91,10 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
     def setUp(self):
         self._lp = None
         self._clients = []
+        self._usage_db = usage_db = create_or_upgrade_usage_db(":memory:")
         yield self._setup_relay(do_listen=True,
-                            advertise_version="advertised.version")
+                                advertise_version="advertised.version",
+                                usage_db=usage_db)
 
     def tearDown(self):
         for c in self._clients:
@@ -157,6 +160,36 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         err = yield c1.next_non_ack()
         self.assertEqual(err["type"], "error")
         self.assertEqual(err["error"], "ping requires 'ping'")
+
+    @inlineCallbacks
+    def test_bind_with_client_version(self):
+        c1 = yield self.make_client()
+        yield c1.next_non_ack()
+
+        c1.send("bind", appid="appid", side="side",
+                client_version=("python", "1.2.3"))
+        yield c1.sync()
+        self.assertEqual(list(self._server._apps.keys()), ["appid"])
+        v = self._usage_db.execute("SELECT * FROM `client_versions`").fetchall()
+        self.assertEqual(v[0]["app_id"], "appid")
+        self.assertEqual(v[0]["side"], "side")
+        self.assertEqual(v[0]["implementation"], "python")
+        self.assertEqual(v[0]["version"], "1.2.3")
+
+    @inlineCallbacks
+    def test_bind_with_client_version_extra_junk(self):
+        c1 = yield self.make_client()
+        yield c1.next_non_ack()
+
+        c1.send("bind", appid="appid", side="side",
+                client_version=("python", "1.2.3", "extra ignore me"))
+        yield c1.sync()
+        self.assertEqual(list(self._server._apps.keys()), ["appid"])
+        v = self._usage_db.execute("SELECT * FROM `client_versions`").fetchall()
+        self.assertEqual(v[0]["app_id"], "appid")
+        self.assertEqual(v[0]["side"], "side")
+        self.assertEqual(v[0]["implementation"], "python")
+        self.assertEqual(v[0]["version"], "1.2.3")
 
     @inlineCallbacks
     def test_list(self):
