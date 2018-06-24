@@ -1,6 +1,11 @@
 
 User-visible changes in "magic-wormhole-mailbox-server":
 
+## Release 0.3.0 (23-Jun-2018)
+
+Fix munin plugins, record client versions in usageDB.
+
+
 ## Release 0.2.0 (16-Jun-2018)
 
 Improve install docs, clean up Munin plugins, add DB migration tool.
