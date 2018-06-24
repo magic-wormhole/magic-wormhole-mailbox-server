@@ -177,6 +177,20 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         self.assertEqual(v[0]["version"], "1.2.3")
 
     @inlineCallbacks
+    def test_bind_without_client_version(self):
+        c1 = yield self.make_client()
+        yield c1.next_non_ack()
+
+        c1.send("bind", appid="appid", side="side")
+        yield c1.sync()
+        self.assertEqual(list(self._server._apps.keys()), ["appid"])
+        v = self._usage_db.execute("SELECT * FROM `client_versions`").fetchall()
+        self.assertEqual(v[0]["app_id"], "appid")
+        self.assertEqual(v[0]["side"], "side")
+        self.assertEqual(v[0]["implementation"], None)
+        self.assertEqual(v[0]["version"], None)
+
+    @inlineCallbacks
     def test_bind_with_client_version_extra_junk(self):
         c1 = yield self.make_client()
         yield c1.next_non_ack()

@@ -170,9 +170,9 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
             raise Error("bind requires 'side'")
         self._app = self.factory.server.get_app(msg["appid"])
         self._side = msg["side"]
-        client_version = msg.get("client_version") # ("python", "0.xyz")
-        if client_version:
-            self._app.log_client_version(server_rx, self._side, client_version)
+        client_version = msg.get("client_version", (None, None))
+        # e.g. ("python", "0.xyz") . <=0.10.5 did not send client_version
+        self._app.log_client_version(server_rx, self._side, client_version)
 
 
     def handle_list(self):
