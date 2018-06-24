@@ -1,6 +1,6 @@
 CREATE TABLE `version`
 (
- `version` INTEGER -- contains one row, set to 2
+ `version` INTEGER -- contains one row
 );
 
 CREATE TABLE `current`

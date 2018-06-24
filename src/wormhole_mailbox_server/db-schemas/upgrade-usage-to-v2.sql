@@ -11,9 +11,5 @@ CREATE TABLE `client_versions`
 CREATE INDEX `client_versions_time_idx` on `client_versions` (`connect_time`);
 CREATE INDEX `client_versions_appid_time_idx` on `client_versions` (`app_id`, `connect_time`);
 
-DROP TABLE `version`;
-CREATE TABLE `version`
-(
- `version` INTEGER -- contains one row, set to 2
-);
+DELETE FROM `version`;
 INSERT INTO `version` (`version`) VALUES (2);
