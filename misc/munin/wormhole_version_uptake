@@ -1,0 +1,82 @@
+#! /usr/bin/env python
+
+"""
+Use the following in /etc/munin/plugin-conf.d/wormhole :
+
+[wormhole_*]
+env.usagedb /path/to/your/wormhole/server/usage.sqlite
+env.python_client_versions = 0.11.0
+
+The python_client_versions list will be used to choose what to graph: any
+python client which reports an application version not on the list will be
+listed as 'other', and all non-python clients will be listed as 'non-python',
+and clients which don't report a version at all will be listed as 'unknown'.
+This list should grow over time just before new versions are released, so the
+graph will remain sorted and stable.
+"""
+
+from __future__ import print_function
+import os, sys, time, sqlite3, collections
+
+CONFIG = """\
+graph_title Magic-Wormhole Version Uptake
+graph_vlabel Clients
+graph_category wormhole
+"""
+versions = ["unknown", "non-python", "other"]
+if "python_client_versions" in os.environ:
+    versions.extend(os.environ["python_client_versions"].split(","))
+names = dict([(v, ("v_" + v).replace(".", "_").replace("-", "_"))
+              for v in versions])
+
+if len(sys.argv) > 1 and sys.argv[1] == "config":
+    print(CONFIG.rstrip())
+    first = True
+    for v in versions:
+        name = names[v]
+        print("%s.label %s" % (name, v))
+        if first:
+            print("%s.draw AREA" % name)
+            first = False
+        else:
+            print("%s.draw STACK" % name)
+        print("%s.type GAUGE" % name)
+    sys.exit(0)
+
+usagedbfile = os.environ["usagedb"]
+assert os.path.exists(usagedbfile)
+usage_db = sqlite3.connect(usagedbfile)
+
+now = time.time()
+MINUTE = 60.0
+updated,rebooted = usage_db.execute("SELECT `updated`,`rebooted` FROM `current`").fetchone()
+if now > updated + 6*MINUTE:
+    sys.exit(1) # expired
+
+def dict_factory(cursor, row):
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        d[col[0]] = row[idx]
+    return d
+usage_db.row_factory = dict_factory
+
+seen_sides = set()
+counts = collections.defaultdict(int)
+for row in usage_db.execute("SELECT * FROM `client_versions`"
+                            " WHERE (`connect_time` > ? AND `connect_time` < ?)",
+                            (now - 60*MINUTE, now)).fetchall():
+    if row["side"] in seen_sides:
+        continue
+    seen_sides.add(row["side"])
+    if row["implementation"] is None and row["version"] is None:
+        version = "unknown"
+    elif row["implementation"] != "python":
+        version = "non-python"
+    elif row["version"] in versions:
+        version = row["version"]
+    else:
+        version = "other"
+    counts[version] += 1
+
+for version in versions:
+    print("%s.value" % names[version], counts[version])
