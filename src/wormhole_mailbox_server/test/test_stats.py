@@ -62,6 +62,10 @@ class ClientVersion(_Make, unittest.TestCase):
                          [dict(app_id="appid", connect_time=400, side="side1",
                                implementation="python", version="1.2.3")])
 
+    def test_no_usage_db(self):
+        s, db, app = self.make(with_usage_db=False)
+        app.log_client_version(451, "side1", ("python", "1.2.3"))
+
 class Nameplate(_Make, unittest.TestCase):
     def test_nameplate_happy(self):
         s, db, app = self.make()

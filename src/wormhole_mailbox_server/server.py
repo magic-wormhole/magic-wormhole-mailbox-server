@@ -183,13 +183,14 @@ class AppNamespace(object):
             server_rx = self._blur_usage * (server_rx // self._blur_usage)
         implementation = client_version[0]
         version = client_version[1]
-        self._usage_db.execute("INSERT INTO `client_versions`"
-                               " (`app_id`, `side`, `connect_time`,"
-                               "  `implementation`, `version`)"
-                               " VALUES(?,?,?,?,?)",
-                               (self._app_id, side, server_rx,
-                                implementation, version))
-        self._usage_db.commit()
+        if self._usage_db:
+            self._usage_db.execute("INSERT INTO `client_versions`"
+                                   " (`app_id`, `side`, `connect_time`,"
+                                   "  `implementation`, `version`)"
+                                   " VALUES(?,?,?,?,?)",
+                                   (self._app_id, side, server_rx,
+                                    implementation, version))
+            self._usage_db.commit()
 
     def get_nameplate_ids(self):
         if not self._allow_list:
