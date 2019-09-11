@@ -1,6 +1,14 @@
 
 User-visible changes in "magic-wormhole-mailbox-server":
 
+## Release 0.4.0 (10-Sep-2019)
+
+* listen on IPv4+IPv6 socket by default (#16)
+* deallocate AppNamespace objects when empty (#12)
+* add client-version-uptake munin plugin
+* drop support for py3.3 and py3.4
+
+
 ## Release 0.3.1 (23-Jun-2018)
 
 Record 'None' for when client doesn't supply a version, to make the math
