@@ -19,7 +19,7 @@ class Options(usage.Options):
     longdesc = LONGDESC
 
     optParameters = [
-        ("port", "p", "tcp:4000:interface=\:\:1", "endpoint to listen on"),
+        ("port", "p", "tcp:4000", "endpoint to listen on"),
         ("blur-usage", None, None, "round logged access times to improve privacy"),
         ("log-fd", None, None, "write JSON usage logs to this file descriptor"),
         ("channel-db", None, "relay.sqlite", "location for the state database"),
@@ -103,8 +103,17 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
     log_requests = config["blur-usage"] is None
     site = make_web_server(server, log_requests,
                            config["websocket-protocol-options"])
-    ep = endpoints.serverFromString(reactor, config["port"]) # to listen
-    StreamServerEndpointService(ep, site).setServiceParent(parent)
+    # --port=tcp:4000 should cause us to listen on "tcp:4000" (all IPv4
+    # interfaces) and "tcp:4000:interface=\:\:" (all IPv6 interfaces, since
+    # "::" is the all-zeros "IPv6 unspecified address"). But
+    # --port=tcp:4000:interface=127.0.0.1 means IPv4-only.
+    interfaces = [""]
+    if "interface=" not in config["port"]:
+        interfaces = ["", ":interface=\:\:"]
+    for i in interfaces:
+        port = config["port"] + i
+        ep = endpoints.serverFromString(reactor, port)
+        StreamServerEndpointService(ep, site).setServiceParent(parent)
     log.msg("websocket listening on ws://HOSTNAME:PORT/v1")
 
     return parent

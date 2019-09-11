@@ -3,7 +3,7 @@ from twisted.python.usage import UsageError
 from twisted.trial import unittest
 from .. import server_tap
 
-PORT = "tcp:4000:interface=\:\:1"
+PORT = "tcp:4000"
 
 class Config(unittest.TestCase):
     def test_defaults(self):
