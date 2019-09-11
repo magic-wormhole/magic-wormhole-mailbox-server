@@ -19,7 +19,7 @@ class Options(usage.Options):
     longdesc = LONGDESC
 
     optParameters = [
-        ("port", "p", "tcp:4000", "endpoint to listen on"),
+        ("port", "p", "tcp:4000:interface=\:\:1", "endpoint to listen on"),
         ("blur-usage", None, None, "round logged access times to improve privacy"),
         ("log-fd", None, None, "write JSON usage logs to this file descriptor"),
         ("channel-db", None, "relay.sqlite", "location for the state database"),
