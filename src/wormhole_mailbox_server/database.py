@@ -15,14 +15,10 @@ def get_schema(name, version):
 
 def get_upgrader(name, new_version):
     try:
-        FileNotFoundError # py3
-    except NameError:
-        FileNotFoundError = EnvironmentError # py2
-    try:
         schema_bytes = resource_string("wormhole_mailbox_server",
                                        "db-schemas/upgrade-%s-to-v%d.sql" %
                                        (name, new_version))
-    except FileNotFoundError:
+    except EnvironmentError: # includes FileNotFoundError on py3
         raise ValueError("no upgrader for %d" % new_version)
     return schema_bytes.decode("utf-8")
 
