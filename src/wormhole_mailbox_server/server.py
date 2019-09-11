@@ -522,7 +522,7 @@ class AppNamespace(object):
                        (mailbox_id,))
             if self._usage_db:
                 self._summarize_mailbox_and_store(for_nameplate, side_rows,
-                                                now, pruned=True)
+                                                  now, pruned=True)
             modified = True
 
         if modified:
