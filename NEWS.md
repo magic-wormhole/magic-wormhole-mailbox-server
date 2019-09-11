@@ -1,6 +1,11 @@
 
 User-visible changes in "magic-wormhole-mailbox-server":
 
+## Release 0.4.1 (11-Sep-2019)
+
+* listen on IPv4+IPv6 properly (#16)
+
+
 ## Release 0.4.0 (10-Sep-2019)
 
 * listen on IPv4+IPv6 socket by default (#16)
