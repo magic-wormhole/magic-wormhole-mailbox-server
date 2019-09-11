@@ -79,5 +79,4 @@ wormhole --relay-url=ws://example.com:4000/v1 send FILENAME
 
 This library is released under the MIT license, see LICENSE for details.
 
-This library is compatible with python2.7, 3.4 (non-Windows-only), 3.5, and
-3.6 .
+This library is compatible with python2.7, and python3 (3.5 and higher).
