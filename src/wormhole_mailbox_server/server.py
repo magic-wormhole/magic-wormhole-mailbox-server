@@ -529,7 +529,9 @@ class AppNamespace(object):
             db.commit()
             if self._usage_db:
                 self._usage_db.commit()
-        log.msg("  prune complete, modified:", modified)
+        in_use = bool(self._mailboxes)
+        log.msg("  prune complete, modified=%s, in_use=%s" % (modified, in_use))
+        return in_use
 
     def count_listeners(self):
         return sum(mailbox.count_listeners()
@@ -592,7 +594,9 @@ class Server(service.MultiService):
         for app_id in sorted(self.get_all_apps()):
             log.msg(" app prune checking %r" % (app_id,))
             app = self.get_app(app_id)
-            app.prune(now, old)
+            in_use = app.prune(now, old)
+            if not in_use:
+                del self._apps[app_id]
         log.msg("app prune ends, %d apps" % len(self._apps))
 
     def dump_stats(self, now, rebooted):
