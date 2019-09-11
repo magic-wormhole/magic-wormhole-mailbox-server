@@ -90,7 +90,13 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
     def expire():
         now = time.time()
         old = now - CHANNEL_EXPIRATION_TIME
-        server.prune_all_apps(now, old)
+        try:
+            server.prune_all_apps(now, old)
+        except Exception as e:
+            # catch-and-log exceptions during prune, so a single error won't
+            # kill the loop. See #13 for details.
+            log.msg("error during prune_all_apps")
+            log.err(e)
         server.dump_stats(now, rebooted=rebooted)
     TimerService(EXPIRATION_CHECK_PERIOD, expire).setServiceParent(parent)
 
