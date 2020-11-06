@@ -1,3 +1,6 @@
+arch:
+  - amd64
+  - ppc64le
 language: python
 # defaults: the py3.7 environment overrides these
 dist: trusty
