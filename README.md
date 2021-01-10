@@ -1,14 +1,13 @@
 # Magic Wormhole Mailbox Server
 [![PyPI](http://img.shields.io/pypi/v/magic-wormhole-mailbox-server.svg)](https://pypi.python.org/pypi/magic-wormhole-mailbox-server)
-[![Build Status](https://travis-ci.org/warner/magic-wormhole-mailbox-server.svg?branch=master)](https://travis-ci.org/warner/magic-wormhole-mailbox-server)
-[![Windows Build Status](https://ci.appveyor.com/api/projects/status/mfnn5rsyfnrq576a/branch/master?svg=true)](https://ci.appveyor.com/project/warner/magic-wormhole-mailbox-server)
-[![codecov.io](https://codecov.io/github/warner/magic-wormhole-mailbox-server/coverage.svg?branch=master)](https://codecov.io/github/warner/magic-wormhole-mailbox-server?branch=master)
+![Tests](https://github.com/magic-wormhole/magic-wormhole-transit-relay/workflows/Tests/badge.svg)
+[![codecov.io](https://codecov.io/github/magic-wormhole/magic-wormhole-transit-relay/coverage.svg?branch=master)](https://codecov.io/github/magic-wormhole/magic-wormhole-transit-relay?branch=master)
 
 This repository holds the code for the main server that
 [Magic-Wormhole](http://magic-wormhole.io) clients connect to. The server
 performs store-and-forward delivery for small key-exchange and control
 messages. Bulk data is sent over a direct TCP connection, or through a
-[transit-relay](https://github.com/warner/magic-wormhole-transit-relay).
+[transit-relay](https://github.com/magic-wormhole/magic-wormhole-transit-relay).
 
 Clients connect with WebSockets, for low-latency delivery in the happy case
 where both clients are attached at the same time. Message are stored to
