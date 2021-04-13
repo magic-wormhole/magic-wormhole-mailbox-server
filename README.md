@@ -74,6 +74,27 @@ option:
 wormhole --relay-url=ws://example.com:4000/v1 send FILENAME
 ```
 
+## Using Docker
+
+Dockerfile content:
+```dockerfile
+FROM python:3.8
+RUN pip install magic-wormhole-mailbox-server
+CMD [ "twist", "wormhole-mailbox","--usage-db=usage.sqlite" ] 
+```
+> Note: This will be running as root, you should adjust it to be in user space for production.
+
+Build and run:
+```shell
+docker build -t magicwormhole Dockerfile
+docker run -p 4000:4000 -d magicwormhole
+```
+
+Connect:
+```shell
+wormhole --relay-url=ws://localhost:4000/v1 send FILENAME
+```
+
 ## License, Compatibility
 
 This library is released under the MIT license, see LICENSE for details.
