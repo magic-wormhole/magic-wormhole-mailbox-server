@@ -1,5 +1,6 @@
 from __future__ import print_function, unicode_literals
 import os, random, base64
+import hashlib
 from collections import namedtuple
 from twisted.python import log
 from twisted.application import service
@@ -551,9 +552,92 @@ class AppNamespace(object):
             channel._shutdown()
 
 
+class NoPermission(object):
+    """
+    A no-op permission provider used to grant any client access (the
+    default).
+    """
+    def get_welcome_data(self):
+        return {}
+
+    def verify_permission(self, submit_permission):
+        return True
+
+
+class HashcashPermission(object):
+    """
+    A permission provider that generates a random 'resource' string
+    and checks a proof-of-work from the client.
+    """
+
+    def __init__(self, bits=20):
+        self.name = "hashcash"
+        self._bits = bits
+        self._passed = False
+
+    def get_welcome_data(self):
+        """
+        Generate the data to include under this method's key in the
+        `permission-required` value of the welcome message.
+
+        Should be called at most once per connection.
+        """
+        self._hashcash_resource = base64.b64encode(os.urandom(8)).decode("utf8")
+        return {
+            "bits": self._bits,
+            "resource-string": self._hashcash_resource,
+        }
+
+    def is_passed(self):
+        """
+        :returns bool: True if verify_permission has been called successfully
+        """
+        return self._passed
+
+    def verify_permission(self, perms):
+        print("VERIFY", perms)
+        stamp = perms.get("stamp", "")
+        fields = stamp.split(":")
+        if len(fields) != 7:
+            print("wrong fields")
+            return False
+        vers, claimed_bits, date, resource, ext, rand, counter = fields
+        vers = int(vers)
+        claimed_bits = int(claimed_bits)
+        if vers != 1:
+            print("wrong vers")
+            return False
+        if resource != self._hashcash_resource:
+            print("bad resource")
+            return False
+        h = hashlib.sha1()
+        h.update(stamp.encode("utf8"))
+        measured_hash = h.digest()
+        measured_bits = 0
+        b = 0
+        done = False
+        while not done:
+            byte = measured_hash[b]
+            b += 1
+            print("  byte", byte, measured_bits)
+            bit = 1 << 7
+            while bit:
+                if byte & bit:
+                    done = True
+                    break
+                else:
+                    measured_bits += 1
+                bit = bit >> 1
+        if measured_bits < claimed_bits:
+            print("not enough bits")
+            return False
+        self._passed = True
+        return True
+
+
 class Server(service.MultiService):
     def __init__(self, db, allow_list, welcome,
-                 blur_usage, usage_db=None, log_file=None):
+                 blur_usage, usage_db=None, log_file=None, demand_hashcash=None):
         service.MultiService.__init__(self)
         self._db = db
         self._allow_list = allow_list
@@ -562,10 +646,32 @@ class Server(service.MultiService):
         self._log_requests = blur_usage is None
         self._usage_db = usage_db
         self._log_file = log_file
+        self._demand_hashcash = False if demand_hashcash is None else demand_hashcash
+        self._demand_hashcash = True
         self._apps = {}
 
     def get_welcome(self):
+        """
+        generate a new 'welcome' message
+        :returns dict: the Welcome message, JSON-serializable
+        """
         return self._welcome
+
+    def get_permission_method(self):
+        """
+        An object that encapsulates how to grant permission.
+        In prinicipal (in the protocol) we could support many, we
+        currently only support two (and only one at a time): 'none'
+        and 'hashcash'.
+
+        The `none` one does nothing.
+
+        :returns IPermissionGranter: a method of permission
+        """
+        if self._demand_hashcash:
+            return HashcashPermission()
+        return NoPermission()
+
     def get_log_requests(self):
         return self._log_requests
 
