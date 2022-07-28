@@ -610,26 +610,25 @@ class HashcashPermission(object):
         return self._passed
 
     def verify_permission(self, perms):
-        print("VERIFY", perms)
+        """
+        :returns bool: an indication of whether the provided permissions
+            reply from a client is valid
+        """
         stamp = perms.get("stamp", "")
         fields = stamp.split(":")
         if len(fields) != 7:
-            print("wrong fields")
             return False
         vers, claimed_bits, date, resource, ext, rand, counter = fields
         vers = int(vers)
         claimed_bits = int(claimed_bits)
         if vers != 1:
-            print("wrong vers")
             return False
         if resource != self._hashcash_resource:
-            print("bad resource")
             return False
         h = hashlib.sha1()
         h.update(stamp.encode("utf8"))
         measured_hash = h.digest()
         if leading_zero_bits(measured_hash) < claimed_bits:
-            print("not enough bits")
             return False
         self._passed = True
         return True
