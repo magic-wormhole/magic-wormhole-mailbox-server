@@ -3,7 +3,7 @@ import time
 from twisted.internet import reactor
 from twisted.python import log
 from autobahn.twisted import websocket
-from .server import CrowdedError, ReclaimedError, SidedMessage
+from .server import CrowdedError, ReclaimedError, SidedMessage, NoPermission
 from .util import dict_to_bytes, bytes_to_dict
 
 # The WebSocket allows the client to send "commands" to the server, and the
@@ -128,12 +128,15 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         rv = self.factory.server
         static_welcome = rv.get_welcome()
 
-        welcome = {
-            "permission-required": {
-                self._permission.name: self._permission.get_welcome_data(),
+        if not isinstance(self._permission, NoPermission):
+            welcome = {
+                "permission-required": {
+                    self._permission.name: self._permission.get_welcome_data(),
+                }
             }
-        }
-        welcome.update(static_welcome)
+            welcome.update(static_welcome)
+        else:
+            welcome = static_welcome
         return welcome
 
     def onOpen(self):
