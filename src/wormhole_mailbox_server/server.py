@@ -552,18 +552,6 @@ class AppNamespace(object):
             channel._shutdown()
 
 
-class NoPermission(object):
-    """
-    A no-op permission provider used to grant any client access (the
-    default).
-    """
-    def get_welcome_data(self):
-        return {}
-
-    def verify_permission(self, submit_permission):
-        return True
-
-
 def leading_zero_bits(bytestring):
     """
     :returns int: the number of leading zeros in the given byte-string
@@ -579,14 +567,31 @@ def leading_zero_bits(bytestring):
             bit = bit >> 1
 
 
+class NoPermission(object):
+    """
+    A no-op permission provider used to grant any client access (the
+    default).
+    """
+    name = "none"
+
+    def get_welcome_data(self):
+        return {}
+
+    def verify_permission(self, submit_permission):
+        return True
+
+    def is_passed(self):
+        return True
+
+
 class HashcashPermission(object):
     """
     A permission provider that generates a random 'resource' string
     and checks a proof-of-work from the client.
     """
+    name = "hashcash"
 
     def __init__(self, bits=20):
-        self.name = "hashcash"
         self._bits = bits
         self._passed = False
 
@@ -636,7 +641,7 @@ class HashcashPermission(object):
 
 class Server(service.MultiService):
     def __init__(self, db, allow_list, welcome,
-                 blur_usage, usage_db=None, log_file=None, demand_hashcash=None):
+                 blur_usage, usage_db=None, log_file=None, permissions="none"):
         service.MultiService.__init__(self)
         self._db = db
         self._allow_list = allow_list
@@ -645,8 +650,8 @@ class Server(service.MultiService):
         self._log_requests = blur_usage is None
         self._usage_db = usage_db
         self._log_file = log_file
-        self._demand_hashcash = False if demand_hashcash is None else demand_hashcash
-        self._demand_hashcash = True
+        self._permissions = permissions
+        assert self._permissions in ("none", "hashcash")
         self._apps = {}
 
     def get_welcome(self):
@@ -667,9 +672,14 @@ class Server(service.MultiService):
 
         :returns IPermissionGranter: a method of permission
         """
-        if self._demand_hashcash:
+        if self._permissions == "none":
+            return NoPermission()
+        elif self._permissions == "hashcash":
             return HashcashPermission()
-        return NoPermission()
+        else:
+            raise ValueError(
+                'Unknown permission "{}"'.format(self._permissions)
+            )
 
     def get_log_requests(self):
         return self._log_requests
@@ -785,6 +795,7 @@ def make_server(db, allow_list=True,
                 advertise_version=None,
                 signal_error=None,
                 blur_usage=None,
+                permissions="none",
                 usage_db=None,
                 log_file=None,
                 welcome_motd=None,
@@ -811,4 +822,5 @@ def make_server(db, allow_list=True,
         welcome["error"] = signal_error
 
     return Server(db, allow_list=allow_list, welcome=welcome,
-                  blur_usage=blur_usage, usage_db=usage_db, log_file=log_file)
+                  blur_usage=blur_usage, usage_db=usage_db, log_file=log_file,
+                  permissions=permissions)

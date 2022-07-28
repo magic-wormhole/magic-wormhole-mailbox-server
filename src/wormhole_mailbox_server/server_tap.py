@@ -14,6 +14,9 @@ LONGDESC = """This plugin sets up a 'Mailbox' server for magic-wormhole.
 This service forwards short messages between clients, to perform key exchange
 and connection setup."""
 
+valid_permissions = ("none", "hashcash")
+
+
 class Options(usage.Options):
     synopsis = "[--port=] [--log-fd] [--blur-usage=] [--usage-db=]"
     longdesc = LONGDESC
@@ -27,6 +30,8 @@ class Options(usage.Options):
         ("advertise-version", None, None, "version to recommend to clients"),
         ("signal-error", None, None, "force all clients to fail with a message"),
         ("motd", None, None, "Send a Message of the Day in the welcome"),
+        ("permissions", None, "none",
+         "demand permissions ({})".format(", ".join(valid_permissions))),
         ]
     optFlags = [
         ("disallow-list", None, "refuse to send list of allocated nameplates"),
@@ -36,6 +41,15 @@ class Options(usage.Options):
         super(Options, self).__init__()
         self["websocket-protocol-options"] = []
         self["allow-list"] = True
+
+    def opt_permissions(self, arg):
+        if arg not in valid_permissions:
+            raise usage.UsageError(
+                "permissions must be one of: {}".format(
+                    ", ".join(valid_permissions)
+                )
+            )
+        self["permissions"] = arg
 
     def opt_disallow_list(self):
         self["allow-list"] = False
@@ -83,6 +97,7 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
                          advertise_version=config["advertise-version"],
                          signal_error=config["signal-error"],
                          blur_usage=config["blur-usage"],
+                         permissions=config["permissions"],
                          usage_db=usage_db,
                          log_file=log_file,
                          welcome_motd=config["motd"],

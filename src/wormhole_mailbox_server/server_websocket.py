@@ -200,7 +200,6 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self._app.log_client_version(server_rx, self._side, client_version)
 
     def handle_submit_permissions(self, msg, server_rx):
-        print(msg, server_rx)
         if msg.get("method", None) != self._permission.name:
             raise Error("need permission method '{}'".format(self._permission.name))
         if not self._permission.verify_permission(msg):
