@@ -740,3 +740,44 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         yield c.d
 
 
+class Permissions(ServerBase, unittest.TestCase):
+    def setUp(self):
+        self._clients = []
+
+    def tearDown(self):
+        for c in self._clients:
+            c.transport.loseConnection()
+        return ServerBase.tearDown(self)
+
+    @inlineCallbacks
+    def make_client(self):
+        f = WSFactory(self.relayurl)
+        f.d = defer.Deferred()
+        reactor.connectTCP("127.0.0.1", self.rdv_ws_port, f)
+        c = yield f.d
+        self._clients.append(c)
+        returnValue(c)
+
+    @inlineCallbacks
+    def test_hashcash(self):
+        yield self._setup_relay(do_listen=True, permissions="hashcash")
+        c = yield self.make_client()
+        welcome = yield c.next_non_ack()
+        self.assertIn(
+            "permission-required",
+            welcome["welcome"],
+        )
+        self.assertIn(
+            "hashcash",
+            welcome["welcome"]["permission-required"],
+        )
+
+    @inlineCallbacks
+    def test_hashcash_invalid_fields(self):
+        yield self._setup_relay(do_listen=True, permissions="hashcash")
+        c = yield self.make_client()
+        welcome = yield c.next_non_ack()
+        yield c.send("submit-permissions", method="hashcash", stamp="wrong")
+        err = yield c.next_non_ack()
+        self.assertIn("error", err)
+        self.assertIn("submit-permission failed", err["error"])
