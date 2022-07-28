@@ -564,6 +564,21 @@ class NoPermission(object):
         return True
 
 
+def leading_zero_bits(bytestring):
+    """
+    :returns int: the number of leading zeros in the given byte-string
+    """
+    measured_bits = 0
+    for byte in bytestring:
+        bit = 1 << 7
+        while bit:
+            if byte & bit:
+                return measured_bits
+            else:
+                measured_bits += 1
+            bit = bit >> 1
+
+
 class HashcashPermission(object):
     """
     A permission provider that generates a random 'resource' string
@@ -613,22 +628,7 @@ class HashcashPermission(object):
         h = hashlib.sha1()
         h.update(stamp.encode("utf8"))
         measured_hash = h.digest()
-        measured_bits = 0
-        b = 0
-        done = False
-        while not done:
-            byte = measured_hash[b]
-            b += 1
-            print("  byte", byte, measured_bits)
-            bit = 1 << 7
-            while bit:
-                if byte & bit:
-                    done = True
-                    break
-                else:
-                    measured_bits += 1
-                bit = bit >> 1
-        if measured_bits < claimed_bits:
+        if leading_zero_bits(measured_hash) < claimed_bits:
             print("not enough bits")
             return False
         self._passed = True
