@@ -600,7 +600,7 @@ class HashcashPermission(object):
         self._hashcash_resource = base64.b64encode(os.urandom(8)).decode("utf8")
         return {
             "bits": self._bits,
-            "resource-string": self._hashcash_resource,
+            "resource": self._hashcash_resource,
         }
 
     def is_passed(self):
