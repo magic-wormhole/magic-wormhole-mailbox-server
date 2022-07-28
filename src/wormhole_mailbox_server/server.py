@@ -625,11 +625,15 @@ class HashcashPermission(object):
             return False
         vers, claimed_bits, date, resource, ext, rand, counter = fields
         vers = int(vers)
-        claimed_bits = int(claimed_bits)
         if vers != 1:
             return False
         if resource != self._hashcash_resource:
             return False
+
+        claimed_bits = int(claimed_bits)
+        if claimed_bits < self._bits:
+            return False
+
         h = hashlib.sha1()
         h.update(stamp.encode("utf8"))
         measured_hash = h.digest()

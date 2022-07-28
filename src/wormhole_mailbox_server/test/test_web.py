@@ -835,3 +835,35 @@ class Permissions(ServerBase, unittest.TestCase):
         msg = yield c.next_non_ack()
         self.assertEqual(msg["type"], "message")
         self.assertEqual(msg["body"], "body")
+
+    @inlineCallbacks
+    def test_hashcash_wrong_bits(self):
+        yield self._setup_relay(do_listen=True, permissions="hashcash")
+
+        if not shutil.which("hashcash"):
+            raise unittest.SkipTest("no 'hashcash' binary installed")
+        c = yield self.make_client()
+        welcome = yield c.next_non_ack()
+
+        stamp = subprocess.check_output([
+            "hashcash",
+            "-C",  # case-sensitive
+            "-m",  # mint
+            "-b", "2",  # too-few bits
+            "-r", welcome["welcome"]["permission-required"]["hashcash"]["resource"],
+        ]).decode("utf8").strip()
+
+        # put something in the mailbox so that when we successfully
+        # open it, we get a non-ACK back and the test can exit
+        # properly.
+        mb1 = self._server.get_app("appid").open_mailbox("mb1", "side", 0).add_message(
+            SidedMessage(side="side", phase="phase", body="body", server_rx=0, msg_id="msgid")
+        )
+
+        c.send("submit-permissions", method="hashcash", stamp=stamp)
+        c.send("bind", appid="appid", side="side")
+        c.send("open", mailbox="mb1")
+
+        msg = yield c.next_non_ack()
+        self.assertIn("error", msg)
+        self.assertEqual(msg["error"], "submit-permission failed")
