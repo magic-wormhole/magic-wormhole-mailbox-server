@@ -23,6 +23,7 @@ class Service(unittest.TestCase):
                                                    signal_error=None,
                                                    welcome_motd=None,
                                                    blur_usage=None,
+                                                   permissions="none",
                                                    usage_db=udb,
                                                    log_file=None)])
         self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
@@ -50,5 +51,6 @@ class Service(unittest.TestCase):
                                                    signal_error=None,
                                                    welcome_motd=None,
                                                    blur_usage=None,
+                                                   permissions="none",
                                                    usage_db=udb,
                                                    log_file=fd)])
