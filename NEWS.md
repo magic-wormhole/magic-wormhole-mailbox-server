@@ -1,6 +1,11 @@
 
 User-visible changes in "magic-wormhole-mailbox-server":
 
+## Upcoming
+
+* correctly close a mailbox which still has a nameplate (#28)
+
+
 ## Release 0.4.1 (11-Sep-2019)
 
 * listen on IPv4+IPv6 properly (#16)

@@ -269,6 +269,18 @@ class Server(_Util, ServerBase, unittest.TestCase):
         self.assertEqual(len(msgs), 5)
         self.assertEqual(msgs[-1]["body"], "body")
 
+    def test_early_close(self):
+        """
+        One side opens a mailbox but closes it (explicitly) before any
+        other side joins.
+        """
+        app = self._server.get_app("appid")
+        name = app.allocate_nameplate("side1", 42)
+        mbox = app.claim_nameplate(name, "side1", 0)
+        m = app.open_mailbox(mbox, "side1", 0)
+        m.close("side1", "mood", 1)
+
+
 class Prune(unittest.TestCase):
 
     def _get_mailbox_updated(self, app, mbox_id):

@@ -142,6 +142,15 @@ class Mailbox:
             return
 
         # nope. delete and summarize
+
+        # if the nameplate is still allocated we'll get a foreign-key
+        # failure when trying to delete the mailbox, so get rid of
+        # those first
+        db.execute("DELETE FROM `nameplate_sides` WHERE `side`=?",
+                   (side,))
+        db.execute("DELETE FROM `nameplates` WHERE `mailbox_id`=?",
+                   (self._mailbox_id,))
+        # remove mailbox content
         db.execute("DELETE FROM `messages` WHERE `mailbox_id`=?",
                    (self._mailbox_id,))
         db.execute("DELETE FROM `mailbox_sides` WHERE `mailbox_id`=?",
