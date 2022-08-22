@@ -1,8 +1,17 @@
 from __future__ import print_function, unicode_literals
 import mock
 import subprocess
+import packaging.version
+from unittest import skipIf
+
 from twisted.trial import unittest
 from twisted.python import log
+from twisted.internet.defer import inlineCallbacks, Deferred
+from twisted.internet.address import IPv4Address
+from twisted.internet.task import deferLater
+import autobahn
+from autobahn.twisted.testing import create_pumper, create_memory_agent, MemoryReactorClockResolver
+from autobahn.twisted.websocket import WebSocketClientProtocol
 from .common import ServerBase, _Util
 from ..server import (make_server, Usage,
                       SidedMessage, CrowdedError, AppNamespace,
@@ -664,39 +673,72 @@ class Permissions(unittest.TestCase):
         )
 
 
+@skipIf(packaging.version.parse(autobahn.version) <= packaging.version.parse("22.6.1"), "need newer Autobahn to run this test")
 class PermissionsServer(unittest.TestCase):
     """
     Test operation of the WebSocket permissions / submit-permissions.
     """
 
+    @inlineCallbacks
     def test_submit_success(self):
         """
         Submit a successful hashcash stamp given a challenge.
 
         Note: this needs the command-line tool "hashcash" to run.
         """
-        factory = WebSocketServerFactory(
-            "ws://localhost:4001/",
-            make_server(
-                create_channel_db(":memory:"),
-                permissions="hashcash",
-            ),
-        )
+        reactor = MemoryReactorClockResolver()
+        pump = create_pumper()
+        self.addCleanup(pump.stop)
 
-        def collect_message(msg, isBinary):
-            messages.append(bytes_to_dict(msg))
-        messages = []
+        def create_proto():
+            server = make_server(create_channel_db(":memory:"), permissions="hashcash")
+            factory = WebSocketServerFactory("ws://127.0.0.1:1", server)
+            addr = IPv4Address("TCP", "127.0.0.1", "0")
+            proto = factory.buildProtocol(addr)
+            proto.factory = factory
 
-        srv = factory.buildProtocol("dummy address")
-        srv.sendMessage = collect_message
-        dummy_req = mock.Mock()
-        srv.onConnect(dummy_req)
-        srv.onOpen()
+            def shutdown():
+                return proto.is_closed
+            self.addCleanup(shutdown)
+            return proto
+
+        agent = create_memory_agent(reactor, pump, create_proto)
+        pump.start()
+
+        class Client(WebSocketClientProtocol):
+            def onOpen(self):
+                self.messages = []
+                self._awaiting = []
+
+            def onMessage(self, msg_data, isBinary):
+                msg = bytes_to_dict(msg_data)
+                if self._awaiting:
+                    self._awaiting, notify = [], self._awaiting
+                    for d in notify:
+                        d.callback(msg)
+                else:
+                    self.messages.append(msg)
+
+            def await_message(self):
+                d = Deferred()
+                if self.messages:
+                    msg = self.messages.pop(0)
+                    d.callback(msg)
+                else:
+                    self._awaiting.append(d)
+                return d
+
+        client = yield agent.open("ws://127.0.0.1:1/", {}, protocol_class=Client)
+
+        def shutdown():
+            client.dropConnection(abort=False)
+            return client.is_closed
+        self.addCleanup(shutdown)
 
         # should have sent Welcome
-        self.assertEqual(1, len(messages))
-        self.assertEqual(messages[0]["type"], "welcome")
-        welcome = messages[0]["welcome"]
+        msg = yield client.await_message()
+        self.assertEqual(msg["type"], "welcome")
+        welcome = msg["welcome"]
         self.assertIn("permission-required", welcome)
         hc = welcome["permission-required"]["hashcash"]
 
@@ -712,12 +754,22 @@ class PermissionsServer(unittest.TestCase):
             "method": "hashcash",
             "stamp": stamp.decode("utf8").strip(),
         }
-        srv.onMessage(dict_to_bytes(submit_permissions), False)
+        client.sendMessage(dict_to_bytes(submit_permissions), False)
 
-        # when we submit permissions, there should just be a single
-        # 'ack' returned. If there is a problem with the permissions,
-        # an error will be sent as well
-        self.assertEqual(len(messages), 2)
+        msg = yield client.await_message()
+        self.assertEqual("ack", msg["type"])
+
+        # when we successfully submit permissions, "nothing happens"
+        # -- there would be an error message if there's a problem. If
+        # we did successfully do permissions, though, we can allocate
+        # now
+        client.sendMessage(dict_to_bytes({"type": "bind"}), False)
+
+        # if we did the permissions successfully before, this will be
+        # another ack -- but if permissions had failed, this would be
+        # an error message
+        msg = yield client.await_message()
+        self.assertEqual("ack", msg["type"])
 
 
 # exercise _find_available_nameplate_id failing
