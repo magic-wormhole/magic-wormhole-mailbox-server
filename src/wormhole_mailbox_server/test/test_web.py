@@ -743,6 +743,9 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
 
 
 class Permissions(ServerBase, unittest.TestCase):
+    """
+    Test permission/submit-permission functionality
+    """
     def setUp(self):
         self._clients = []
 
@@ -778,7 +781,7 @@ class Permissions(ServerBase, unittest.TestCase):
     def test_hashcash_invalid_fields(self):
         yield self._setup_relay(do_listen=True, permissions="hashcash")
         c = yield self.make_client()
-        welcome = yield c.next_non_ack()
+        yield c.next_non_ack()
         yield c.send("submit-permissions", method="hashcash", stamp="wrong")
         err = yield c.next_non_ack()
         self.assertIn("error", err)
@@ -788,7 +791,7 @@ class Permissions(ServerBase, unittest.TestCase):
     def test_hashcash_wrong_version(self):
         yield self._setup_relay(do_listen=True, permissions="hashcash")
         c = yield self.make_client()
-        welcome = yield c.next_non_ack()
+        yield c.next_non_ack()
         yield c.send("submit-permissions", method="hashcash", stamp="0:2:*:*:*:*:*")
         err = yield c.next_non_ack()
         self.assertIn("error", err)
@@ -798,7 +801,7 @@ class Permissions(ServerBase, unittest.TestCase):
     def test_hashcash_wrong_resource(self):
         yield self._setup_relay(do_listen=True, permissions="hashcash")
         c = yield self.make_client()
-        welcome = yield c.next_non_ack()
+        yield c.next_non_ack()
         yield c.send("submit-permissions", method="hashcash", stamp="1:2:date:resource:*:*:*")
         err = yield c.next_non_ack()
         self.assertIn("error", err)
@@ -824,7 +827,7 @@ class Permissions(ServerBase, unittest.TestCase):
         # put something in the mailbox so that when we successfully
         # open it, we get a non-ACK back and the test can exit
         # properly.
-        mb1 = self._server.get_app("appid").open_mailbox("mb1", "side", 0).add_message(
+        self._server.get_app("appid").open_mailbox("mb1", "side", 0).add_message(
             SidedMessage(side="side", phase="phase", body="body", server_rx=0, msg_id="msgid")
         )
 
@@ -856,7 +859,7 @@ class Permissions(ServerBase, unittest.TestCase):
         # put something in the mailbox so that when we successfully
         # open it, we get a non-ACK back and the test can exit
         # properly.
-        mb1 = self._server.get_app("appid").open_mailbox("mb1", "side", 0).add_message(
+        self._server.get_app("appid").open_mailbox("mb1", "side", 0).add_message(
             SidedMessage(side="side", phase="phase", body="body", server_rx=0, msg_id="msgid")
         )
 
