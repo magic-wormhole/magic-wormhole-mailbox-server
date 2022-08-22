@@ -1,10 +1,15 @@
 from __future__ import print_function, unicode_literals
 import mock
+import subprocess
 from twisted.trial import unittest
 from twisted.python import log
 from .common import ServerBase, _Util
 from ..server import (make_server, Usage,
-                      SidedMessage, CrowdedError, AppNamespace)
+                      SidedMessage, CrowdedError, AppNamespace,
+                      HashcashPermission, NoPermission)
+from ..server_websocket import WebSocketServer, WebSocketServerFactory
+from ..util import bytes_to_dict, dict_to_bytes
+
 from ..database import create_channel_db, create_usage_db
 
 
@@ -627,6 +632,93 @@ class MakeServer(unittest.TestCase):
         db = create_channel_db(":memory:")
         s = make_server(db, welcome_motd="hello world")
         self.assertEqual(s.get_welcome(), {"motd": "hello world"})
+
+
+class Permissions(unittest.TestCase):
+    """
+    Test configurion of permissions
+    """
+
+    def test_hashcash_permission(self):
+        db = create_channel_db(":memory:")
+        s = make_server(db, permissions="hashcash")
+        self.assertIsInstance(
+            s.get_permission_method(),
+            HashcashPermission
+        )
+
+    def test_no_permission(self):
+        db = create_channel_db(":memory:")
+        s = make_server(db, permissions="none")
+        self.assertIsInstance(
+            s.get_permission_method(),
+            NoPermission
+        )
+
+    def test_default_permission(self):
+        db = create_channel_db(":memory:")
+        s = make_server(db)
+        self.assertIsInstance(
+            s.get_permission_method(),
+            NoPermission
+        )
+
+
+class PermissionsServer(unittest.TestCase):
+    """
+    Test operation of the WebSocket permissions / submit-permissions.
+    """
+
+    def test_submit_success(self):
+        """
+        Submit a successful hashcash stamp given a challenge.
+
+        Note: this needs the command-line tool "hashcash" to run.
+        """
+        factory = WebSocketServerFactory(
+            "ws://localhost:4001/",
+            make_server(
+                create_channel_db(":memory:"),
+                permissions="hashcash",
+            ),
+        )
+
+        def collect_message(msg, isBinary):
+            messages.append(bytes_to_dict(msg))
+        messages = []
+
+        srv = factory.buildProtocol("dummy address")
+        srv.sendMessage = collect_message
+        dummy_req = mock.Mock()
+        srv.onConnect(dummy_req)
+        srv.onOpen()
+
+        # should have sent Welcome
+        self.assertEqual(1, len(messages))
+        self.assertEqual(messages[0]["type"], "welcome")
+        welcome = messages[0]["welcome"]
+        self.assertIn("permission-required", welcome)
+        hc = welcome["permission-required"]["hashcash"]
+
+        try:
+            stamp = subprocess.check_output([
+                "hashcash", "-m", "-C", "-b", str(hc["bits"]), "-r", hc["resource"]
+            ])
+        except Exception as e:
+            raise unittest.SkipTest("skipping: no hashcash: {}".format(e))
+
+        submit_permissions = {
+            "type": "submit-permissions",
+            "method": "hashcash",
+            "stamp": stamp.decode("utf8").strip(),
+        }
+        srv.onMessage(dict_to_bytes(submit_permissions), False)
+
+        # when we submit permissions, there should just be a single
+        # 'ack' returned. If there is a problem with the permissions,
+        # an error will be sent as well
+        self.assertEqual(len(messages), 2)
+
 
 # exercise _find_available_nameplate_id failing
 # exercise CrowdedError
