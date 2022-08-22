@@ -8,7 +8,6 @@ from twisted.trial import unittest
 from twisted.python import log
 from twisted.internet.defer import inlineCallbacks, Deferred
 from twisted.internet.address import IPv4Address
-from twisted.internet.task import deferLater
 import autobahn
 from autobahn.twisted.testing import create_pumper, create_memory_agent, MemoryReactorClockResolver
 from autobahn.twisted.websocket import WebSocketClientProtocol
@@ -16,7 +15,7 @@ from .common import ServerBase, _Util
 from ..server import (make_server, Usage,
                       SidedMessage, CrowdedError, AppNamespace,
                       HashcashPermission, NoPermission)
-from ..server_websocket import WebSocketServer, WebSocketServerFactory
+from ..server_websocket import WebSocketServerFactory
 from ..util import bytes_to_dict, dict_to_bytes
 
 from ..database import create_channel_db, create_usage_db
