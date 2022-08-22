@@ -813,7 +813,7 @@ class Permissions(ServerBase, unittest.TestCase):
     def test_hashcash_correct(self):
         yield self._setup_relay(do_listen=True, permissions="hashcash")
 
-        if not shutil.which or not shutil.which("hashcash"):
+        if not hasattr(shutil, "which") or not shutil.which("hashcash"):
             raise unittest.SkipTest("no 'hashcash' binary installed")
         c = yield self.make_client()
         welcome = yield c.next_non_ack()
@@ -845,7 +845,7 @@ class Permissions(ServerBase, unittest.TestCase):
     def test_hashcash_wrong_bits(self):
         yield self._setup_relay(do_listen=True, permissions="hashcash")
 
-        if not shutil.which or not shutil.which("hashcash"):
+        if not hasattr(shutil, "which") or not shutil.which("hashcash"):
             raise unittest.SkipTest("no 'hashcash' binary installed")
         c = yield self.make_client()
         welcome = yield c.next_non_ack()
