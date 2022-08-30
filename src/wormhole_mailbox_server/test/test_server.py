@@ -2,7 +2,7 @@ from __future__ import print_function, unicode_literals
 import mock
 import subprocess
 import packaging.version
-from unittest import skipIf
+from unittest import SkipTest
 
 from twisted.trial import unittest
 from twisted.python import log
@@ -672,11 +672,14 @@ class Permissions(unittest.TestCase):
         )
 
 
-@skipIf(packaging.version.parse(autobahn.version) <= packaging.version.parse("22.6.1"), "need newer Autobahn to run this test")
 class PermissionsServer(unittest.TestCase):
     """
     Test operation of the WebSocket permissions / submit-permissions.
     """
+
+    def setUp(self):
+        if packaging.version.parse(autobahn.version) <= packaging.version.parse("22.6.1"):
+            raise SkipTest("need newer Autobahn to run this test")
 
     @inlineCallbacks
     def test_submit_success(self):
