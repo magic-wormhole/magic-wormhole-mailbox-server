@@ -1,5 +1,5 @@
 from unittest import mock
-from unittest import skipIf
+from unittest import SkipTest
 import subprocess
 import mock
 import packaging.version
@@ -681,11 +681,14 @@ class Permissions(unittest.TestCase):
         )
 
 
-@skipIf(packaging.version.parse(autobahn.version) <= packaging.version.parse("22.6.1"), "need newer Autobahn to run this test")
 class PermissionsServer(unittest.TestCase):
     """
     Test operation of the WebSocket permissions / submit-permissions.
     """
+
+    def setUp(self):
+        if packaging.version.parse(autobahn.version) <= packaging.version.parse("22.6.1"):
+            raise SkipTest("need newer Autobahn to run this test")
 
     @inlineCallbacks
     def test_submit_success(self):
