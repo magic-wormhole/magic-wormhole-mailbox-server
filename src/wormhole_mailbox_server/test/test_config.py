@@ -231,3 +231,16 @@ class Config(unittest.TestCase):
         self.assertIn("--blur-usage=", s)
         self.assertIn("round logged access times to improve privacy", s)
 
+    def test_permissions_valid(self):
+        o = server_tap.Options()
+        o.parseOptions([
+            "--permissions", "none",
+        ])
+        self.assertEquals(o["permissions"], "none")
+
+    def test_permissions_invalid(self):
+        o = server_tap.Options()
+        with self.assertRaises(UsageError):
+            o.parseOptions([
+                "--permissions", "an invalid permission method",
+            ])
