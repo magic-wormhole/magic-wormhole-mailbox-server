@@ -26,6 +26,7 @@ class Options(usage.Options):
         ("usage-db", None, None, "record usage data (SQLite)"),
         ("advertise-version", None, None, "version to recommend to clients"),
         ("signal-error", None, None, "force all clients to fail with a message"),
+        ("motd", None, None, "Send a Message of the Day in the welcome"),
         ]
     optFlags = [
         ("disallow-list", None, "refuse to send list of allocated nameplates"),
@@ -84,6 +85,7 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
                          blur_usage=config["blur-usage"],
                          usage_db=usage_db,
                          log_file=log_file,
+                         welcome_motd=config["motd"],
                          )
     server.setServiceParent(parent)
     rebooted = time.time()
