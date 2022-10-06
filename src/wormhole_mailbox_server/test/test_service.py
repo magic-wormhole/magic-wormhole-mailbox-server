@@ -22,6 +22,7 @@ class Service(unittest.TestCase):
         self.assertEqual(ms.mock_calls, [mock.call(cdb, allow_list=True,
                                                    advertise_version=None,
                                                    signal_error=None,
+                                                   welcome_motd=None,
                                                    blur_usage=None,
                                                    usage_db=udb,
                                                    log_file=None)])
@@ -48,6 +49,7 @@ class Service(unittest.TestCase):
         self.assertEqual(ms.mock_calls, [mock.call(cdb, allow_list=True,
                                                    advertise_version=None,
                                                    signal_error=None,
+                                                   welcome_motd=None,
                                                    blur_usage=None,
                                                    usage_db=udb,
                                                    log_file=fd)])

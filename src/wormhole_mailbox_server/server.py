@@ -677,24 +677,23 @@ class Server(service.MultiService):
         return service.MultiService.stopService(self)
 
 def make_server(db, allow_list=True,
-                advertise_version=None, signal_error=None,
+                advertise_version=None,
+                signal_error=None,
                 blur_usage=None,
                 usage_db=None,
                 log_file=None,
+                welcome_motd=None,
                 ):
     if blur_usage:
         log.msg("blurring access times to %d seconds" % blur_usage)
     else:
         log.msg("not blurring access times")
 
-    welcome = {
+    welcome = dict()
+    if welcome_motd is not None:
         # adding .motd will cause all clients to display the message,
         # then keep running normally
-        #"motd": "Welcome to the public relay.\nPlease enjoy this service.",
-
-        # adding .error will cause all clients to fail, with this message
-        #"error": "This server has been disabled, see URL for details.",
-        }
+        welcome["motd"] = str(welcome_motd)
 
     if advertise_version:
         # The primary (python CLI) implementation will emit a message if
@@ -702,7 +701,9 @@ def make_server(db, allow_list=True,
         # distributions which include older version, but we still expect
         # them to be compatible, stop sending this key.
         welcome["current_cli_version"] = advertise_version
+
     if signal_error:
         welcome["error"] = signal_error
+
     return Server(db, allow_list=allow_list, welcome=welcome,
                   blur_usage=blur_usage, usage_db=usage_db, log_file=log_file)

@@ -623,6 +623,11 @@ class MakeServer(unittest.TestCase):
         s = make_server(db, advertise_version="version")
         self.assertEqual(s.get_welcome(), {"current_cli_version": "version"})
 
+    def test_welcome_message_of_the_day(self):
+        db = create_channel_db(":memory:")
+        s = make_server(db, welcome_motd="hello world")
+        self.assertEqual(s.get_welcome(), {"motd": "hello world"})
+
 # exercise _find_available_nameplate_id failing
 # exercise CrowdedError
 # exercise double free_mailbox
