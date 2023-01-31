@@ -619,6 +619,8 @@ class HashcashPermission(object):
         :returns bool: an indication of whether the provided permissions
             reply from a client is valid
         """
+        # XXX THINK do we need this whole method to be constant-time?
+        # (basically impossible if it's not even syntactially valid?)
         stamp = perms.get("stamp", "")
         fields = stamp.split(":")
         if len(fields) != 7:
