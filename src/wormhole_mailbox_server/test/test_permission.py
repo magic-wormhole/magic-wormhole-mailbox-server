@@ -16,7 +16,7 @@ class TestPermission(unittest.TestCase):
         prov = create_permission_provider("hashcash")
         p = prov()
         self.assertIsInstance(p, HashcashPermission)
-        data = p.get_welcome_data()
+        p.get_welcome_data()
         self.assertFalse(p.verify_permission({"stamp": "asdf"}))
 
     def test_hashcash_claim_more_bits(self):
