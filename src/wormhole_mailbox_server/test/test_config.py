@@ -21,7 +21,6 @@ class Config(unittest.TestCase):
                              "log-fd": None,
                              "websocket-protocol-options": [],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_advertise_version(self):
@@ -39,7 +38,6 @@ class Config(unittest.TestCase):
                              "log-fd": None,
                              "websocket-protocol-options": [],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_blur(self):
@@ -57,7 +55,6 @@ class Config(unittest.TestCase):
                              "log-fd": None,
                              "websocket-protocol-options": [],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_channel_db(self):
@@ -75,7 +72,6 @@ class Config(unittest.TestCase):
                              "log-fd": None,
                              "websocket-protocol-options": [],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_disallow_list(self):
@@ -93,7 +89,6 @@ class Config(unittest.TestCase):
                              "log-fd": None,
                              "websocket-protocol-options": [],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_log_fd(self):
@@ -111,7 +106,6 @@ class Config(unittest.TestCase):
                              "log-fd": 5,
                              "websocket-protocol-options": [],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_port(self):
@@ -129,7 +123,6 @@ class Config(unittest.TestCase):
                              "log-fd": None,
                              "websocket-protocol-options": [],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
         o = server_tap.Options()
@@ -146,7 +139,6 @@ class Config(unittest.TestCase):
                              "log-fd": None,
                              "websocket-protocol-options": [],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_signal_error(self):
@@ -164,7 +156,6 @@ class Config(unittest.TestCase):
                              "log-fd": None,
                              "websocket-protocol-options": [],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_usage_db(self):
@@ -182,7 +173,6 @@ class Config(unittest.TestCase):
                              "log-fd": None,
                              "websocket-protocol-options": [],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_websocket_protocol_option_1(self):
@@ -200,7 +190,6 @@ class Config(unittest.TestCase):
                              "log-fd": None,
                              "websocket-protocol-options": [("foo", "bar")],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_websocket_protocol_option_2(self):
@@ -222,7 +211,6 @@ class Config(unittest.TestCase):
                                                             ("baz", [1, "buz"]),
                                                             ],
                              "permissions": "none",
-                             "external-permission": {},
                              })
 
     def test_websocket_protocol_option_errors(self):
