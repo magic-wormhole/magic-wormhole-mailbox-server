@@ -3,6 +3,7 @@ from twisted.internet import reactor
 from twisted.python import log
 from autobahn.twisted import websocket
 from .server import CrowdedError, ReclaimedError, SidedMessage, NoPermission, check_valid_nameplate
+from .permission import NoPermission
 from .util import dict_to_bytes, bytes_to_dict
 
 # The WebSocket allows the client to send "commands" to the server, and the
@@ -109,6 +110,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self._mailbox_id = None
         self._did_close = False
         self._permission = None
+        self._permission_passed = False
 
     def onConnect(self, request):
         rv = self.factory.server
@@ -186,7 +188,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
 
     def handle_bind(self, msg, server_rx):
         # if demanding permission, but no permission yet .. error
-        if self._permission is not None and not self._permission.is_passed():
+        if not isinstance(self._permission, NoPermission) and not self._permission_passed:
             raise Error("must submit-permission first")
 
         if self._app or self._side:
@@ -204,7 +206,8 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
     def handle_submit_permissions(self, msg, server_rx):
         if msg.get("method", None) != self._permission.name:
             raise Error("need permission method '{}'".format(self._permission.name))
-        if not self._permission.verify_permission(msg):
+        self._permission_passed = self._permission.verify_permission(msg)
+        if not self._permission_passed:
             raise Error("submit-permission failed")
 
     def handle_list(self):
