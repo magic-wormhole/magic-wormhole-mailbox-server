@@ -1,6 +1,5 @@
 from __future__ import print_function, unicode_literals
 import os, random, base64
-import hashlib
 from collections import namedtuple
 from twisted.python import log
 from twisted.application import service

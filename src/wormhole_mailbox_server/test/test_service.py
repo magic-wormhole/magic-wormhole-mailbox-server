@@ -4,7 +4,6 @@ import mock
 from twisted.application.service import MultiService
 from ..permission import (
     NoPermission,
-    HashcashPermission,
 )
 from .. import server_tap
 
