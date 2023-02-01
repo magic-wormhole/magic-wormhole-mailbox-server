@@ -9,6 +9,7 @@ from .increase_rlimits import increase_rlimits
 from .server import make_server
 from .web import make_web_server
 from .database import create_or_upgrade_channel_db, create_or_upgrade_usage_db
+from .permission import create_permission_provider
 
 LONGDESC = """This plugin sets up a 'Mailbox' server for magic-wormhole.
 This service forwards short messages between clients, to perform key exchange
@@ -92,16 +93,18 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
     log_file = (os.fdopen(int(config["log-fd"]), "w")
                 if config["log-fd"] is not None
                 else None)
-    server = make_server(channel_db,
-                         allow_list=config["allow-list"],
-                         advertise_version=config["advertise-version"],
-                         signal_error=config["signal-error"],
-                         blur_usage=config["blur-usage"],
-                         permissions=config["permissions"],
-                         usage_db=usage_db,
-                         log_file=log_file,
-                         welcome_motd=config["motd"],
-                         )
+
+    server = make_server(
+        channel_db,
+        allow_list=config["allow-list"],
+        advertise_version=config["advertise-version"],
+        signal_error=config["signal-error"],
+        blur_usage=config["blur-usage"],
+        permission_provider=create_permission_provider(config.get("permissions", "none")),
+        usage_db=usage_db,
+        log_file=log_file,
+        welcome_motd=config["motd"],
+    )
     server.setServiceParent(parent)
     rebooted = time.time()
     def expire():

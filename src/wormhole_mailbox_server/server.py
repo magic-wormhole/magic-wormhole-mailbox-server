@@ -4,6 +4,7 @@ import hashlib
 from collections import namedtuple
 from twisted.python import log
 from twisted.application import service
+from .permission import create_permission_provider
 
 def generate_mailbox_id():
     return base64.b32encode(os.urandom(8)).lower().strip(b"=").decode("ascii")
@@ -552,102 +553,9 @@ class AppNamespace(object):
             channel._shutdown()
 
 
-def leading_zero_bits(bytestring):
-    """
-    :returns int: the number of leading zeros in the given byte-string
-    """
-    measured_bits = 0
-    for byte in bytestring:
-        bit = 1 << 7
-        while bit:
-            if byte & bit:
-                return measured_bits
-            else:
-                measured_bits += 1
-            bit = bit >> 1
-
-
-class NoPermission(object):
-    """
-    A no-op permission provider used to grant any client access (the
-    default).
-    """
-    name = "none"
-
-    def get_welcome_data(self):
-        return {}
-
-    def verify_permission(self, submit_permission):
-        return True
-
-    def is_passed(self):
-        return True
-
-
-class HashcashPermission(object):
-    """
-    A permission provider that generates a random 'resource' string
-    and checks a proof-of-work from the client.
-    """
-    name = "hashcash"
-
-    def __init__(self, bits=20):
-        self._bits = bits
-        self._passed = False
-
-    def get_welcome_data(self):
-        """
-        Generate the data to include under this method's key in the
-        `permission-required` value of the welcome message.
-
-        Should be called at most once per connection.
-        """
-        self._hashcash_resource = base64.b64encode(os.urandom(8)).decode("utf8")
-        return {
-            "bits": self._bits,
-            "resource": self._hashcash_resource,
-        }
-
-    def is_passed(self):
-        """
-        :returns bool: True if verify_permission has been called successfully
-        """
-        return self._passed
-
-    def verify_permission(self, perms):
-        """
-        :returns bool: an indication of whether the provided permissions
-            reply from a client is valid
-        """
-        # XXX THINK do we need this whole method to be constant-time?
-        # (basically impossible if it's not even syntactially valid?)
-        stamp = perms.get("stamp", "")
-        fields = stamp.split(":")
-        if len(fields) != 7:
-            return False
-        vers, claimed_bits, date, resource, ext, rand, counter = fields
-        vers = int(vers)
-        if vers != 1:
-            return False
-        if resource != self._hashcash_resource:
-            return False
-
-        claimed_bits = int(claimed_bits)
-        if claimed_bits < self._bits:
-            return False
-
-        h = hashlib.sha1()
-        h.update(stamp.encode("utf8"))
-        measured_hash = h.digest()
-        if leading_zero_bits(measured_hash) < claimed_bits:
-            return False
-        self._passed = True
-        return True
-
-
 class Server(service.MultiService):
     def __init__(self, db, allow_list, welcome,
-                 blur_usage, usage_db=None, log_file=None, permissions="none"):
+                 blur_usage, usage_db=None, log_file=None, permission_provider=None):
         service.MultiService.__init__(self)
         self._db = db
         self._allow_list = allow_list
@@ -656,8 +564,8 @@ class Server(service.MultiService):
         self._log_requests = blur_usage is None
         self._usage_db = usage_db
         self._log_file = log_file
-        self._permissions = permissions
-        assert self._permissions in ("none", "hashcash")
+        self._permission_provider = permission_provider
+        # XXX assert interface instead assert self._permissions in ("none", "hashcash")
         self._apps = {}
 
     def get_welcome(self):
@@ -678,14 +586,7 @@ class Server(service.MultiService):
 
         :returns IPermissionGranter: a method of permission
         """
-        if self._permissions == "none":
-            return NoPermission()
-        elif self._permissions == "hashcash":
-            return HashcashPermission()
-        else:
-            raise ValueError(
-                'Unknown permission "{}"'.format(self._permissions)
-            )
+        return self._permission_provider()
 
     def get_log_requests(self):
         return self._log_requests
@@ -801,7 +702,7 @@ def make_server(db, allow_list=True,
                 advertise_version=None,
                 signal_error=None,
                 blur_usage=None,
-                permissions="none",
+                permission_provider=None,
                 usage_db=None,
                 log_file=None,
                 welcome_motd=None,
@@ -827,6 +728,9 @@ def make_server(db, allow_list=True,
     if signal_error:
         welcome["error"] = signal_error
 
+    if permission_provider is None:
+        permission_provider = create_permission_provider("none")
+
     return Server(db, allow_list=allow_list, welcome=welcome,
                   blur_usage=blur_usage, usage_db=usage_db, log_file=log_file,
-                  permissions=permissions)
+                  permission_provider=permission_provider)

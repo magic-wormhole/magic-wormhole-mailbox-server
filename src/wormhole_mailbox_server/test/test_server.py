@@ -13,8 +13,13 @@ from autobahn.twisted.testing import create_pumper, create_memory_agent, MemoryR
 from autobahn.twisted.websocket import WebSocketClientProtocol
 from .common import ServerBase, _Util
 from ..server import (make_server, Usage,
-                      SidedMessage, CrowdedError, AppNamespace,
-                      HashcashPermission, NoPermission)
+                      SidedMessage, CrowdedError, AppNamespace)
+from ..permission import (
+    create_permission_provider,
+    NoPermission,
+    HashcashPermission,
+)
+
 from ..server_websocket import WebSocketServerFactory
 from ..util import bytes_to_dict, dict_to_bytes
 
@@ -649,7 +654,7 @@ class Permissions(unittest.TestCase):
 
     def test_hashcash_permission(self):
         db = create_channel_db(":memory:")
-        s = make_server(db, permissions="hashcash")
+        s = make_server(db, permission_provider=create_permission_provider("hashcash"))
         self.assertIsInstance(
             s.get_permission_method(),
             HashcashPermission
@@ -657,7 +662,7 @@ class Permissions(unittest.TestCase):
 
     def test_no_permission(self):
         db = create_channel_db(":memory:")
-        s = make_server(db, permissions="none")
+        s = make_server(db, permission_provider=create_permission_provider("none"))
         self.assertIsInstance(
             s.get_permission_method(),
             NoPermission
@@ -693,7 +698,7 @@ class PermissionsServer(unittest.TestCase):
         self.addCleanup(pump.stop)
 
         def create_proto():
-            server = make_server(create_channel_db(":memory:"), permissions="hashcash")
+            server = make_server(create_channel_db(":memory:"), permission_provider=create_permission_provider("hashcash"))
             factory = WebSocketServerFactory("ws://127.0.0.1:1", server)
             addr = IPv4Address("TCP", "127.0.0.1", "0")
             proto = factory.buildProtocol(addr)

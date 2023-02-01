@@ -2,6 +2,10 @@ from __future__ import unicode_literals, print_function
 from twisted.trial import unittest
 import mock
 from twisted.application.service import MultiService
+from ..permission import (
+    NoPermission,
+    HashcashPermission,
+)
 from .. import server_tap
 
 class Service(unittest.TestCase):
@@ -24,7 +28,7 @@ class Service(unittest.TestCase):
                                                    signal_error=None,
                                                    welcome_motd=None,
                                                    blur_usage=None,
-                                                   permissions="none",
+                                                   permission_provider=NoPermission,
                                                    usage_db=udb,
                                                    log_file=None)])
         self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
@@ -52,6 +56,6 @@ class Service(unittest.TestCase):
                                                    signal_error=None,
                                                    welcome_motd=None,
                                                    blur_usage=None,
-                                                   permissions="none",
+                                                   permission_provider=NoPermission,
                                                    usage_db=udb,
                                                    log_file=fd)])
