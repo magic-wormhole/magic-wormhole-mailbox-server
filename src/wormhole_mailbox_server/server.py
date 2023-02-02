@@ -574,7 +574,7 @@ class Server(service.MultiService):
         """
         return self._welcome
 
-    def get_permission_method(self):
+    def create_permission_provider(self):
         """
         An object that encapsulates how to grant permission.
         In prinicipal (in the protocol) we could support many, we
@@ -583,7 +583,7 @@ class Server(service.MultiService):
 
         The `none` one does nothing.
 
-        :returns IPermissionGranter: a method of permission
+        :returns IPermission: a method of granting permission
         """
         return self._permission_provider()
 

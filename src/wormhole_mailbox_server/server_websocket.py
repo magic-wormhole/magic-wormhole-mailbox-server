@@ -117,7 +117,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         rv = self.factory.server
         if rv.get_log_requests():
             log.msg("ws client connecting: %s" % (request.peer,))
-        self._permission = rv.get_permission_method()
+        self._permission = rv.create_permission_provider()
         self._reactor = self.factory.reactor
 
     def _generate_welcome(self):

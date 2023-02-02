@@ -656,7 +656,7 @@ class Permissions(unittest.TestCase):
         db = create_channel_db(":memory:")
         s = make_server(db, permission_provider=create_permission_provider("hashcash"))
         self.assertIsInstance(
-            s.get_permission_method(),
+            s.create_permission_provider(),
             HashcashPermission
         )
 
@@ -664,7 +664,7 @@ class Permissions(unittest.TestCase):
         db = create_channel_db(":memory:")
         s = make_server(db, permission_provider=create_permission_provider("none"))
         self.assertIsInstance(
-            s.get_permission_method(),
+            s.create_permission_provider(),
             NoPermission
         )
 
@@ -672,7 +672,7 @@ class Permissions(unittest.TestCase):
         db = create_channel_db(":memory:")
         s = make_server(db)
         self.assertIsInstance(
-            s.get_permission_method(),
+            s.create_permission_provider(),
             NoPermission
         )
 
