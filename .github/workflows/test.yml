@@ -16,6 +16,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: Install hashcash
+      run: sudo apt install hashcash
+
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
