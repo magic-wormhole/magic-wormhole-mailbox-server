@@ -3,7 +3,7 @@ import os, random, base64
 from collections import namedtuple
 from twisted.python import log
 from twisted.application import service
-from .permission import create_permission_provider
+from .permission import create_permission_provider, IPermission
 
 def generate_mailbox_id():
     return base64.b32encode(os.urandom(8)).lower().strip(b"=").decode("ascii")
@@ -563,8 +563,12 @@ class Server(service.MultiService):
         self._log_requests = blur_usage is None
         self._usage_db = usage_db
         self._log_file = log_file
+        if permission_provider is not None:
+            if not IPermission.implementedBy(permission_provider):
+                raise ValueError(
+                    "permission_provider must be IPermission"
+                )
         self._permission_provider = permission_provider
-        # XXX assert interface instead assert self._permissions in ("none", "hashcash")
         self._apps = {}
 
     def get_welcome(self):
