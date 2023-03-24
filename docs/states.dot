@@ -17,13 +17,21 @@
 // but that ack etc isn't covered in these diagrams
 
 digraph {
-    title [label="Mailbox Server" style="dotted"]
+    node [fontname = "Source Sans Pro" fontsize = 22];
+    edge [fontname = "Source Code Pro" fontsize = 18];
+    graph [fontname = "Source Sans Pro" fontsize = 22];
+
+    title [label="Mailbox Server" style="dotted"];
+
+    ranksep = 1;
 
     {rank=same; start_open start_permissions}
+    start_open [shape=box, style=bold];
     start_open -> bound [label="bind(appid, side)"];
 
+    start_permissions [shape=box, style=bold];
     start_permissions -> granted [label="submit_permissions()"];
-    granted -> bound [label="bind(appid, side)"];
+    granted -> bound [label="bind(appid, side)", decorate="asdf"];
 
     bound -> have_nameplate [label="allocate()\n-> nameplate_id"]
     # allocate() really does do a claim() .. but you have to call it explicitly too
