@@ -18,10 +18,10 @@
 
 digraph {
     node [fontname = "Source Sans Pro" fontsize = 22];
-    edge [fontname = "Source Code Pro" fontsize = 18];
+    edge [fontname = "Source Code Pro" fontsize = 18 fontcolor=blue];
     graph [fontname = "Source Sans Pro" fontsize = 22];
 
-    title [label="Mailbox Server" style="dotted"];
+    title [label="Mailbox Server" style="dotted" fontsize=32];
 
     ranksep = 1;
 
@@ -30,26 +30,26 @@ digraph {
     start_open -> bound [label="bind(appid, side)"];
 
     start_permissions [shape=box, style=bold];
-    start_permissions -> granted [label="submit_permissions()"];
-    granted -> bound [label="bind(appid, side)", decorate="asdf"];
+    start_permissions -> granted [label="submit_permissions()" fontcolor=red];
+    granted -> bound [label="bind(appid, side)"];
 
-    bound -> have_nameplate [label="allocate()\n-> nameplate_id"]
+    bound -> have_nameplate [label="allocate()\l-> nameplate_id\l"]
     # allocate() really does do a claim() .. but you have to call it explicitly too
-    have_nameplate -> claimed [label="claim(nameplate, side)\n-> mailbox_id"]
-    have_nameplate -> done [label="release(nameplate)"]
+    have_nameplate -> claimed [label="claim(nameplate, side)\l-> mailbox_id\l" fontcolor=darkgreen]
+    have_nameplate -> done [label="release(nameplate)" fontcolor=red]
 
     # ths is on the "join" side; they are told the nameplate number
-    bound -> claimed [label="claim(nameplate, side)\n-> mailbox_id"]
-    claimed -> unclaimed [label="release(nameplate)"]
+    bound -> claimed [label="claim(nameplate, side)\l-> mailbox_id\l" fontcolor=darkgreen]
+    claimed -> unclaimed [label="release(nameplate)" fontcolor=red]
 
     # note: allowing two different paths to 'unclaimed' is I think
     # _allowed_ currently by the server, but better to define it with
     # juts one way probably.
 
-    unclaimed -> open [label="open(mailbox_id)\nsend(enqued_messages)"]
-    #claimed -> open [label="open(mailbox_id)\nsend(enqued_messages)"]
+    unclaimed -> open [label="open(mailbox_id)\l-> send(enqued_messages)\l"]
+    #claimed -> open [label="open(mailbox_id)\l-> send(enqued_messages)\l"]
     #open -> open [label="release(nameplate)"]
-    open -> open [label="add_message(msg)\nsend(side, phase, body)"]
-    open ->      done [label="close(mailbox_id)"]
+    open -> open [label="add_message(msg)\l-> send(side, phase, body)\l"]
+    open ->      done [label="close(mailbox_id)" fontcolor=red]
     # XXX will get all message already in the box, how to represent?
 }
