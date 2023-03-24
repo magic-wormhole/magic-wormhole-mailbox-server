@@ -1,0 +1,47 @@
+/*digraph {
+    title [label="Mailbox\nServer Machine" style="dotted"]
+
+    start -> opened [label="open(side)"];
+
+    opened -> opened [label="open(side)"];
+    opened -> opened [label="add_message(sided_message)"];
+    opened -> closing [label="close(side, mood)"];
+
+    closing -> closing [label="close(side, mood)"];
+}
+*/
+
+
+// note: all messages have an "id" and a "type"
+// and the server sends back an "ack" for every one
+// but that ack etc isn't covered in these diagrams
+
+digraph {
+    title [label="Mailbox Server" style="dotted"]
+
+    {rank=same; start_open start_permissions}
+    start_open -> bound [label="bind(appid, side)"];
+
+    start_permissions -> granted [label="submit_permissions()"];
+    granted -> bound [label="bind(appid, side)"];
+
+    bound -> have_nameplate [label="allocate()\n-> nameplate_id"]
+    # allocate() really does do a claim() .. but you have to call it explicitly too
+    have_nameplate -> claimed [label="claim(nameplate, side)\n-> mailbox_id"]
+    have_nameplate -> done [label="release(nameplate)"]
+
+    # ths is on the "join" side; they are told the nameplate number
+    bound -> claimed [label="claim(nameplate, side)\n-> mailbox_id"]
+    claimed -> unclaimed [label="release(nameplate)"]
+
+    # note: allowing two different paths to 'unclaimed' is I think
+    # _allowed_ currently by the server, but better to define it with
+    # juts one way probably.
+
+    unclaimed -> open [label="open(mailbox_id)\nsend(enqued_messages)"]
+    #claimed -> open [label="open(mailbox_id)\nsend(enqued_messages)"]
+    #open -> open [label="release(nameplate)"]
+    open -> open [label="add_message(msg)\nsend(side, phase, body)"]
+    open ->      done [label="close(mailbox_id)"]
+    # XXX will get all message already in the box, how to represent?
+}
