@@ -1,5 +1,10 @@
 @startuml
 
+skinparam defaultFontName "Source Sans Pro"
+skinparam participantFontSize 22
+skinparam arrowFontSize 18
+skinparam noteFontSize 22
+
 title Magic Folder Server
 
   alice <- mailbox: welcome
@@ -8,7 +13,7 @@ title Magic Folder Server
   alice -> mailbox: allocate
   alice <- mailbox: allocated: nameplate_id
 
-group nameplate allocated
+activate alice #aaddff
 
   alice -> mailbox: claim nameplate_id
   alice <- mailbox: claimed: mailbox_id
@@ -30,7 +35,9 @@ group nameplate allocated
   alice -> mailbox: release nameplate_id
   alice <- mailbox: released
 
-end
+deactivate alice
+
+note over mailbox #eeeeee: Key-Verification messages double as version exchange
 
   alice -> mailbox: add phase=version side=a body
 
@@ -39,9 +46,10 @@ end
 
   bob -> mailbox: add phase=version side=b body
   bob <- mailbox: message phase=version side=b body
+activate bob #lightgreen
   alice <- mailbox: message phase=version side=b body
 
-group Encrypted Application Messages
+activate alice #lightgreen
 
   alice -> mailbox: add phase=0 side=a body
   alice <- mailbox: message phase=0 side=a body
@@ -55,7 +63,8 @@ group Encrypted Application Messages
   bob   <- mailbox: message phase=0 side=b body
   alice <- mailbox: message phase=0 side=b body
 
-end
+deactivate alice
+deactivate bob
 
 group Closing
 
