@@ -58,13 +58,22 @@ activate alice #lightgreen
   alice <- mailbox: message phase=0 side=a body
   bob   <- mailbox: message phase=0 side=a body
 
+' XXX does this help or hinter understanding?
+  alice -->> bob: (effectively msg 0 from alice->bob)
+
   alice -> mailbox: add phase=1 side=a body
   alice <- mailbox: message phase=1 side=a body
   bob   <- mailbox: message phase=1 side=a body
 
+' XXX does this help or hinter understanding?
+  alice -->> bob: (effectively msg 1 from alice->bob)
+
   bob -> mailbox: add phase=0 side=b body
   bob   <- mailbox: message phase=0 side=b body
   alice <- mailbox: message phase=0 side=b body
+
+' XXX does this help or hinter understanding?
+  alice <<-- bob: (effectively msg 0 from bob->alice)
 
 deactivate alice
 deactivate bob
