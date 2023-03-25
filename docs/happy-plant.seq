@@ -78,6 +78,7 @@ activate alice #lightgreen
 deactivate alice
 deactivate bob
 
+' group #Pink Closing
 group Closing
 
   bob -> mailbox: close mailbox_id mood
