@@ -1,0 +1,70 @@
+@startuml
+
+title Magic Folder Server
+
+  alice <- mailbox: welcome
+  alice -> mailbox: bind appid, side
+
+  alice -> mailbox: allocate
+  alice <- mailbox: allocated: nameplate_id
+
+group nameplate allocated
+
+  alice -> mailbox: claim nameplate_id
+  alice <- mailbox: claimed: mailbox_id
+  alice -> mailbox: open mailbox_id
+
+  alice -> mailbox: add phase=pake body
+  alice <- mailbox: message phase=pake side=a body
+
+  bob <- mailbox: welcome
+  bob -> mailbox: bind appid, side
+  bob -> mailbox: claim nameplate_id
+  bob <- mailbox: claimed: mailbox_id
+  bob -> mailbox: open mailbox_id
+  bob <- mailbox: message phase=pake side=a body
+  bob -> mailbox: add phase=pake body
+  bob <- mailbox: mesage phase=pake side=b body
+
+  alice <- mailbox: mesage phase=pake side=b body
+  alice -> mailbox: release nameplate_id
+  alice <- mailbox: released
+
+end
+
+  alice -> mailbox: add phase=version side=a body
+
+  bob <- mailbox: message phase=version side=a body
+  alice <- mailbox: message phase=version side=a body
+
+  bob -> mailbox: add phase=version side=b body
+  bob <- mailbox: message phase=version side=b body
+  alice <- mailbox: message phase=version side=b body
+
+group Encrypted Application Messages
+
+  alice -> mailbox: add phase=0 side=a body
+  alice <- mailbox: message phase=0 side=a body
+  bob   <- mailbox: message phase=0 side=a body
+
+  alice -> mailbox: add phase=1 side=a body
+  alice <- mailbox: message phase=1 side=a body
+  bob   <- mailbox: message phase=1 side=a body
+
+  bob -> mailbox: add phase=0 side=b body
+  bob   <- mailbox: message phase=0 side=b body
+  alice <- mailbox: message phase=0 side=b body
+
+end
+
+group Closing
+
+  bob -> mailbox: close mailbox_id mood
+  bob <- mailbox: closed
+
+  alice -> mailbox: close mailbox_id mood
+  alice <- mailbox: closed
+
+end
+
+@enduml
