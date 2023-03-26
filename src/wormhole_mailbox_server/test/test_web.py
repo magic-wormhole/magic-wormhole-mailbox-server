@@ -222,7 +222,7 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         self.assertEqual(m["nameplates"], [])
 
         app = self._server.get_app("appid")
-        nameplate_id1 = app.allocate_nameplate("side", 0)
+        nameplate_id1, mailbox_id1 = app.allocate_nameplate("side", 0)
         app.claim_nameplate("np2", "side", 0)
 
         c1.send("list")

@@ -69,7 +69,7 @@ from .util import dict_to_bytes, bytes_to_dict
 # -> {type: "list"} -> nameplates
 #  <- {type: "nameplates", nameplates: [{id: str,..},..]}
 # -> {type: "allocate"} -> nameplate, mailbox
-#  <- {type: "allocated", nameplate: str}
+#  <- {type: "allocated", nameplate: str, mailbox: str}
 # -> {type: "claim", nameplate: str} -> mailbox
 #  <- {type: "claimed", mailbox: str}
 # -> {type: "release"}
@@ -185,10 +185,10 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
     def handle_allocate(self, server_rx):
         if self._did_allocate:
             raise Error("you already allocated one, don't be greedy")
-        nameplate_id = self._app.allocate_nameplate(self._side, server_rx)
+        nameplate_id, mailbox_id = self._app.allocate_nameplate(self._side, server_rx)
         assert isinstance(nameplate_id, type(""))
         self._did_allocate = True
-        self.send("allocated", nameplate=nameplate_id)
+        self.send("allocated", nameplate=nameplate_id, mailbox=mailbox_id)
 
     def handle_claim(self, msg, server_rx):
         if "nameplate" not in msg:

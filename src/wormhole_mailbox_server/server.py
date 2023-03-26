@@ -234,8 +234,7 @@ class AppNamespace(object):
     def allocate_nameplate(self, side, when):
         nameplate_id = self._find_available_nameplate_id()
         mailbox_id = self.claim_nameplate(nameplate_id, side, when)
-        del mailbox_id # ignored, they'll learn it from claim()
-        return nameplate_id
+        return nameplate_id, mailbox_id
 
     def claim_nameplate(self, name, side, when):
         # when we're done:
