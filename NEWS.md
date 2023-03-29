@@ -4,6 +4,9 @@ User-visible changes in "magic-wormhole-mailbox-server":
 ## Upcoming
 
 * correctly close a mailbox which still has a nameplate (#28)
+* remote python2 support
+* test on python 3.8, 3.9, 3.10 and 3.11 series
+* drop "six" (#35)
 
 
 ## Release 0.4.1 (11-Sep-2019)
