@@ -94,7 +94,8 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         self._usage_db = usage_db = create_or_upgrade_usage_db(":memory:")
         yield self._setup_relay(do_listen=True,
                                 advertise_version="advertised.version",
-                                usage_db=usage_db)
+                                usage_db=usage_db,
+                                allow_list=True)
 
     def tearDown(self):
         for c in self._clients:

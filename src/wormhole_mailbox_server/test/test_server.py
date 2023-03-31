@@ -59,7 +59,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
         self.assertEqual(type(name), type(""))
         nid = int(name)
         self.assert_(0 < nid < 10, nid)
-        self.assertEqual(app.get_nameplate_ids(), set([name]))
+        self.assertEqual(app._get_nameplate_ids(), set([name]))
         # allocate also does a claim
         np_row, side_rows = self._nameplate(app, name)
         self.assertEqual(len(side_rows), 1)

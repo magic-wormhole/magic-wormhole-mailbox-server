@@ -29,16 +29,22 @@ class Options(usage.Options):
         ("motd", None, None, "Send a Message of the Day in the welcome"),
         ]
     optFlags = [
-        ("disallow-list", None, "refuse to send list of allocated nameplates"),
+        ("disallow-list", None, "default. refuse to send list of allocated nameplates"),
+        ("allow-list", None, "allow to send list of allocated nameplates"),
         ]
 
     def __init__(self):
         super(Options, self).__init__()
+        # Default values
         self["websocket-protocol-options"] = []
-        self["allow-list"] = True
+        self["allow-list"] = False
 
     def opt_disallow_list(self):
-        self["allow-list"] = False
+        # no-op because default
+        pass
+
+    def opt_allow_list(self):
+        self["allow-list"] = True
 
     def opt_log_fd(self, arg):
         self["log-fd"] = int(arg)

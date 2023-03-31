@@ -679,7 +679,7 @@ class Server(service.MultiService):
             app._shutdown()
         return service.MultiService.stopService(self)
 
-def make_server(db, allow_list=True,
+def make_server(db, allow_list=False,
                 advertise_version=None,
                 signal_error=None,
                 blur_usage=None,
