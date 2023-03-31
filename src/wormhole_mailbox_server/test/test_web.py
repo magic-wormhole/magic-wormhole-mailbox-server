@@ -280,6 +280,11 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         self.assertEqual(err["type"], "error")
         self.assertEqual(err["error"], "claim requires 'nameplate'")
 
+        c1.send("claim", nameplate="np1", allocate=False) # not allocated
+        err = yield c1.next_non_ack()
+        self.assertEqual(err["type"], "error")
+        self.assertEqual(err["error"], "unallocated")
+
         c1.send("claim", nameplate="np1")
         m = yield c1.next_non_ack()
         self.assertEqual(m["type"], "claimed")

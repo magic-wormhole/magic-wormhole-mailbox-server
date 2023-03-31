@@ -3,7 +3,7 @@ import time
 from twisted.internet import reactor
 from twisted.python import log
 from autobahn.twisted import websocket
-from .server import CrowdedError, ReclaimedError, SidedMessage
+from .server import CrowdedError, ReclaimedError, UnknownNameplateError, SidedMessage
 from .util import dict_to_bytes, bytes_to_dict
 
 # The WebSocket allows the client to send "commands" to the server, and the
@@ -193,6 +193,10 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
     def handle_claim(self, msg, server_rx):
         if "nameplate" not in msg:
             raise Error("claim requires 'nameplate'")
+        allow_allocate = True
+        if "allocate" in msg:
+            allow_allocate = msg["allocate"]
+
         if self._did_claim:
             raise Error("only one claim per connection")
         self._did_claim = True
@@ -201,11 +205,13 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self._nameplate_id = nameplate_id
         try:
             mailbox_id = self._app.claim_nameplate(nameplate_id, self._side,
-                                                   server_rx)
+                                                   server_rx, allow_allocate)
         except CrowdedError:
             raise Error("crowded")
         except ReclaimedError:
             raise Error("reclaimed")
+        except UnknownNameplateError:
+            raise Error("unallocated")
         self.send("claimed", mailbox=mailbox_id)
 
     def handle_release(self, msg, server_rx):
