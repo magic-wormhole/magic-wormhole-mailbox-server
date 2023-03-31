@@ -199,7 +199,6 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
 
         if self._did_claim:
             raise Error("only one claim per connection")
-        self._did_claim = True
         nameplate_id = msg["nameplate"]
         assert isinstance(nameplate_id, type("")), type(nameplate_id)
         self._nameplate_id = nameplate_id
@@ -212,6 +211,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
             raise Error("reclaimed")
         except UnknownNameplateError:
             raise Error("unallocated")
+        self._did_claim = True
         self.send("claimed", mailbox=mailbox_id)
 
     def handle_release(self, msg, server_rx):
