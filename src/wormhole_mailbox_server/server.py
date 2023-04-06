@@ -3,6 +3,7 @@ import os, random, base64
 from collections import namedtuple
 from twisted.python import log
 from twisted.application import service
+from .permission import create_permission_provider, IPermission
 
 def generate_mailbox_id():
     return base64.b32encode(os.urandom(8)).lower().strip(b"=").decode("ascii")
@@ -553,7 +554,7 @@ class AppNamespace(object):
 
 class Server(service.MultiService):
     def __init__(self, db, allow_list, welcome,
-                 blur_usage, usage_db=None, log_file=None):
+                 blur_usage, usage_db=None, log_file=None, permission_provider=None):
         service.MultiService.__init__(self)
         self._db = db
         self._allow_list = allow_list
@@ -562,10 +563,34 @@ class Server(service.MultiService):
         self._log_requests = blur_usage is None
         self._usage_db = usage_db
         self._log_file = log_file
+        if permission_provider is not None:
+            if not IPermission.implementedBy(permission_provider):
+                raise ValueError(
+                    "permission_provider must be IPermission"
+                )
+        self._permission_provider = permission_provider
         self._apps = {}
 
     def get_welcome(self):
+        """
+        generate a new 'welcome' message
+        :returns dict: the Welcome message, JSON-serializable
+        """
         return self._welcome
+
+    def create_permission_provider(self):
+        """
+        An object that encapsulates how to grant permission.
+        In prinicipal (in the protocol) we could support many, we
+        currently only support two (and only one at a time): 'none'
+        and 'hashcash'.
+
+        The `none` one does nothing.
+
+        :returns IPermission: a method of granting permission
+        """
+        return self._permission_provider()
+
     def get_log_requests(self):
         return self._log_requests
 
@@ -680,6 +705,7 @@ def make_server(db, allow_list=True,
                 advertise_version=None,
                 signal_error=None,
                 blur_usage=None,
+                permission_provider=None,
                 usage_db=None,
                 log_file=None,
                 welcome_motd=None,
@@ -705,5 +731,9 @@ def make_server(db, allow_list=True,
     if signal_error:
         welcome["error"] = signal_error
 
+    if permission_provider is None:
+        permission_provider = create_permission_provider("none")
+
     return Server(db, allow_list=allow_list, welcome=welcome,
-                  blur_usage=blur_usage, usage_db=usage_db, log_file=log_file)
+                  blur_usage=blur_usage, usage_db=usage_db, log_file=log_file,
+                  permission_provider=permission_provider)

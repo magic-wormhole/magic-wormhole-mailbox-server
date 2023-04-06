@@ -4,6 +4,7 @@ from twisted.internet import reactor
 from twisted.python import log
 from autobahn.twisted import websocket
 from .server import CrowdedError, ReclaimedError, SidedMessage
+from .permission import NoPermission
 from .util import dict_to_bytes, bytes_to_dict
 
 # The WebSocket allows the client to send "commands" to the server, and the
@@ -109,16 +110,39 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self._mailbox = None
         self._mailbox_id = None
         self._did_close = False
+        self._permission = None
+        self._permission_passed = False
 
     def onConnect(self, request):
         rv = self.factory.server
         if rv.get_log_requests():
             log.msg("ws client connecting: %s" % (request.peer,))
+        self._permission = rv.create_permission_provider()
         self._reactor = self.factory.reactor
 
-    def onOpen(self):
+    def _generate_welcome(self):
+        """
+        Create a welcome message to send to a client. This may include
+        hashcash permission.
+
+        :return dict: json-encodable welcome data
+        """
         rv = self.factory.server
-        self.send("welcome", welcome=rv.get_welcome())
+        static_welcome = rv.get_welcome()
+
+        if not isinstance(self._permission, NoPermission):
+            welcome = {
+                "permission-required": {
+                    self._permission.name: self._permission.get_welcome_data(),
+                }
+            }
+            welcome.update(static_welcome)
+        else:
+            welcome = static_welcome
+        return welcome
+
+    def onOpen(self):
+        self.send("welcome", welcome=self._generate_welcome())
 
     def onMessage(self, payload, isBinary):
         server_rx = time.time()
@@ -133,6 +157,8 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
                 return self.handle_ping(msg)
             if mtype == "bind":
                 return self.handle_bind(msg, server_rx)
+            if mtype == "submit-permissions":
+                return self.handle_submit_permissions(msg, server_rx)
 
             if not self._app:
                 raise Error("must bind first")
@@ -162,6 +188,10 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self.send("pong", pong=msg["ping"])
 
     def handle_bind(self, msg, server_rx):
+        # if demanding permission, but no permission yet .. error
+        if not isinstance(self._permission, NoPermission) and not self._permission_passed:
+            raise Error("must submit-permission first")
+
         if self._app or self._side:
             raise Error("already bound")
         if "appid" not in msg:
@@ -174,6 +204,12 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         # e.g. ("python", "0.xyz") . <=0.10.5 did not send client_version
         self._app.log_client_version(server_rx, self._side, client_version)
 
+    def handle_submit_permissions(self, msg, server_rx):
+        if msg.get("method", None) != self._permission.name:
+            raise Error("need permission method '{}'".format(self._permission.name))
+        self._permission_passed = self._permission.verify_permission(msg)
+        if not self._permission_passed:
+            raise Error("submit-permission failed")
 
     def handle_list(self):
         nameplate_ids = sorted(self._app.get_nameplate_ids())
