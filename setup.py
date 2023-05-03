@@ -31,7 +31,6 @@ setup(name="magic-wormhole-mailbox-server",
                 ],
       package_data={"wormhole_mailbox_server": ["db-schemas/*.sql"]},
       install_requires=[
-          "six",
           "attrs >= 16.3.0", # 16.3.0 adds __attrs_post_init__
           "twisted[tls] >= 17.5.0",
           "autobahn[twisted] >= 0.14.1",
