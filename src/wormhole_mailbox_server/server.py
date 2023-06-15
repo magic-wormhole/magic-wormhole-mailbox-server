@@ -554,7 +554,7 @@ class AppNamespace(object):
 
 class Server(service.MultiService):
     def __init__(self, db, allow_list, welcome,
-                 blur_usage, usage_db=None, log_file=None, permission_provider=None):
+                 blur_usage, usage_db=None, log_file=None, permission_providers=None):
         service.MultiService.__init__(self)
         self._db = db
         self._allow_list = allow_list
@@ -563,12 +563,17 @@ class Server(service.MultiService):
         self._log_requests = blur_usage is None
         self._usage_db = usage_db
         self._log_file = log_file
-        if permission_provider is not None:
-            if not IPermission.implementedBy(permission_provider):
+        if permission_providers is not None:
+            for perm in permission_providers:
+                if not IPermission.implementedBy(perm):
+                    raise ValueError(
+                        "All permission_providers must be IPermission"
+                    )
+            if not permission_providers:
                 raise ValueError(
-                    "permission_provider must be IPermission"
+                    "Need at least one permission provider"
                 )
-        self._permission_provider = permission_provider
+        self._permission_providers = permission_providers
         self._apps = {}
 
     def get_welcome(self):
@@ -578,18 +583,19 @@ class Server(service.MultiService):
         """
         return self._welcome
 
-    def create_permission_provider(self):
+    def instantiate_permission_providers(self):
         """
-        An object that encapsulates how to grant permission.
-        In prinicipal (in the protocol) we could support many, we
-        currently only support two (and only one at a time): 'none'
-        and 'hashcash'.
+        A list of objects that encapsulate ways to grant permission.
 
-        The `none` one does nothing.
-
-        :returns IPermission: a method of granting permission
+        :returns list[IPermission]: at least one (but possibly more)
+            methods of granting permission
         """
-        return self._permission_provider()
+        # Since providers can have state, we need to instantiate them
+        # once for each connection
+        return [
+            provider()
+            for provider in self._permission_providers
+        ]
 
     def get_log_requests(self):
         return self._log_requests
@@ -705,7 +711,7 @@ def make_server(db, allow_list=True,
                 advertise_version=None,
                 signal_error=None,
                 blur_usage=None,
-                permission_provider=None,
+                permission_providers=None,
                 usage_db=None,
                 log_file=None,
                 welcome_motd=None,
@@ -731,9 +737,11 @@ def make_server(db, allow_list=True,
     if signal_error:
         welcome["error"] = signal_error
 
-    if permission_provider is None:
-        permission_provider = create_permission_provider("none")
+    if permission_providers is None:
+        permission_providers = [
+            create_permission_provider("none")
+        ]
 
     return Server(db, allow_list=allow_list, welcome=welcome,
                   blur_usage=blur_usage, usage_db=usage_db, log_file=log_file,
-                  permission_provider=permission_provider)
+                  permission_providers=permission_providers)

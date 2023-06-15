@@ -31,7 +31,7 @@ class Options(usage.Options):
         ("advertise-version", None, None, "version to recommend to clients"),
         ("signal-error", None, None, "force all clients to fail with a message"),
         ("motd", None, None, "Send a Message of the Day in the welcome"),
-        ("permissions", None, "none",
+        ("permissions", None, None,
          "demand permissions ({})".format(", ".join(valid_permissions))),
         ]
     optFlags = [
@@ -42,6 +42,7 @@ class Options(usage.Options):
         super(Options, self).__init__()
         self["websocket-protocol-options"] = []
         self["allow-list"] = True
+        self["permissions"] = set()
 
     def opt_permissions(self, arg):
         if arg not in valid_permissions:
@@ -50,7 +51,7 @@ class Options(usage.Options):
                     ", ".join(valid_permissions)
                 )
             )
-        self["permissions"] = arg
+        self["permissions"].add(arg)
 
     def opt_disallow_list(self):
         self["allow-list"] = False
@@ -94,13 +95,19 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
                 if config["log-fd"] is not None
                 else None)
 
+    # if the user specified any permissions at all, then we use only
+    # that set. Otherwise, we use the set ["none"]
+    permissions = [
+        create_permission_provider(perm_name)
+        for perm_name in (config["permissions"] or ["none"])
+    ]
     server = make_server(
         channel_db,
         allow_list=config["allow-list"],
         advertise_version=config["advertise-version"],
         signal_error=config["signal-error"],
         blur_usage=config["blur-usage"],
-        permission_provider=create_permission_provider(config.get("permissions", "none")),
+        permission_providers=permissions,
         usage_db=usage_db,
         log_file=log_file,
         welcome_motd=config["motd"],

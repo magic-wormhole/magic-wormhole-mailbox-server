@@ -110,14 +110,14 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self._mailbox = None
         self._mailbox_id = None
         self._did_close = False
-        self._permission = None
+        self._permissions = None
         self._permission_passed = False
 
     def onConnect(self, request):
         rv = self.factory.server
         if rv.get_log_requests():
             log.msg("ws client connecting: %s" % (request.peer,))
-        self._permission = rv.create_permission_provider()
+        self._permissions = rv.instantiate_permission_providers()
         self._reactor = self.factory.reactor
 
     def _generate_welcome(self):
@@ -130,10 +130,17 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         rv = self.factory.server
         static_welcome = rv.get_welcome()
 
-        if not isinstance(self._permission, NoPermission):
+        permissions = [
+            perm.name
+            for perm in self._permissions
+            if not isinstance(perm, NoPermission)
+        ]
+        if permissions:
             welcome = {
                 "permission-required": {
-                    self._permission.name: self._permission.get_welcome_data(),
+                    perm.name: perm.get_welcome_data()
+                    for perm in self._permissions
+                    if not isinstance(perm, NoPermission)
                 }
             }
             welcome.update(static_welcome)
@@ -189,7 +196,10 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
 
     def handle_bind(self, msg, server_rx):
         # if demanding permission, but no permission yet .. error
-        if not isinstance(self._permission, NoPermission) and not self._permission_passed:
+        # unless there's a "NoPermission" option, then we pass
+        if any(isinstance(p, NoPermission) for p in self._permissions):
+            self._permission_passed = True
+        if not self._permission_passed:
             raise Error("must submit-permission first")
 
         if self._app or self._side:
