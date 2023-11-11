@@ -1,6 +1,6 @@
 from __future__ import print_function, unicode_literals
 import io, time
-import mock
+from unittest import mock
 import treq
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
