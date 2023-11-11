@@ -11,6 +11,8 @@ class CrowdedError(Exception):
     pass
 class ReclaimedError(Exception):
     pass
+class UnknownNameplateError(Exception):
+    pass
 
 Usage = namedtuple("Usage", ["started", "waiting_time", "total_time", "result"])
 TransitUsage = namedtuple("TransitUsage",
@@ -234,10 +236,9 @@ class AppNamespace(object):
     def allocate_nameplate(self, side, when):
         nameplate_id = self._find_available_nameplate_id()
         mailbox_id = self.claim_nameplate(nameplate_id, side, when)
-        del mailbox_id # ignored, they'll learn it from claim()
-        return nameplate_id
+        return nameplate_id, mailbox_id
 
-    def claim_nameplate(self, name, side, when):
+    def claim_nameplate(self, name, side, when, allow_allocate=True):
         # when we're done:
         # * there will be one row for the nameplate
         #  * there will be one 'side' attached to it, with claimed=True
@@ -250,6 +251,8 @@ class AppNamespace(object):
                          " WHERE `app_id`=? AND `name`=?",
                          (self._app_id, name)).fetchone()
         if not row:
+            if not allow_allocate:
+                raise UnknownNameplateError("Claimed nameplate does not exist, and `allow_allocate` is set to False")
             if self._log_requests:
                 log.msg("creating nameplate#%s for app_id %s" %
                         (name, self._app_id))
@@ -676,7 +679,7 @@ class Server(service.MultiService):
             app._shutdown()
         return service.MultiService.stopService(self)
 
-def make_server(db, allow_list=True,
+def make_server(db, allow_list=False,
                 advertise_version=None,
                 signal_error=None,
                 blur_usage=None,

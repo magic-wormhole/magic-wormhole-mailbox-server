@@ -20,8 +20,9 @@ class Server(_Util, ServerBase, unittest.TestCase):
         nids = set()
         # this takes a second, and claims all the short-numbered nameplates
         def add():
-            nameplate_id = app.allocate_nameplate("side1", 0)
+            nameplate_id, mailbox_id = app.allocate_nameplate("side1", 0)
             self.assertEqual(type(nameplate_id), type(""))
+            self.assertEqual(type(mailbox_id), type(""))
             nid = int(nameplate_id)
             nids.add(nid)
         for i in range(9): add()
@@ -54,11 +55,11 @@ class Server(_Util, ServerBase, unittest.TestCase):
 
     def test_nameplate(self):
         app = self._server.get_app("appid")
-        name = app.allocate_nameplate("side1", 0)
+        name, mailbox = app.allocate_nameplate("side1", 0)
         self.assertEqual(type(name), type(""))
         nid = int(name)
         self.assert_(0 < nid < 10, nid)
-        self.assertEqual(app.get_nameplate_ids(), set([name]))
+        self.assertEqual(app._get_nameplate_ids(), set([name]))
         # allocate also does a claim
         np_row, side_rows = self._nameplate(app, name)
         self.assertEqual(len(side_rows), 1)
@@ -275,8 +276,9 @@ class Server(_Util, ServerBase, unittest.TestCase):
         other side joins.
         """
         app = self._server.get_app("appid")
-        name = app.allocate_nameplate("side1", 42)
+        name, allocate_mailbox = app.allocate_nameplate("side1", 42)
         mbox = app.claim_nameplate(name, "side1", 0)
+        self.assertEqual(mbox, allocate_mailbox)
         m = app.open_mailbox(mbox, "side1", 0)
         m.close("side1", "mood", 1)
 
@@ -511,7 +513,7 @@ class Summary(unittest.TestCase):
     def test_nameplate_allowed(self):
         db = create_channel_db(":memory:")
         a = AppNamespace(db, None, None, False, "some_app_id", True)
-        np = a.allocate_nameplate("side1", "321")
+        np, mb = a.allocate_nameplate("side1", "321")
         self.assertEqual(set([np]), a.get_nameplate_ids())
 
     def test_blur(self):

@@ -19,7 +19,7 @@ class Service(unittest.TestCase):
                         s = server_tap.makeService(o)
         self.assertEqual(ccdb.mock_calls, [mock.call("relay.sqlite")])
         self.assertEqual(ccub.mock_calls, [mock.call(None)])
-        self.assertEqual(ms.mock_calls, [mock.call(cdb, allow_list=True,
+        self.assertEqual(ms.mock_calls, [mock.call(cdb, allow_list=False,
                                                    advertise_version=None,
                                                    signal_error=None,
                                                    welcome_motd=None,
@@ -46,7 +46,7 @@ class Service(unittest.TestCase):
                                         return_value=fd) as f:
                             server_tap.makeService(o)
         self.assertEqual(f.mock_calls, [mock.call(99, "w")])
-        self.assertEqual(ms.mock_calls, [mock.call(cdb, allow_list=True,
+        self.assertEqual(ms.mock_calls, [mock.call(cdb, allow_list=False,
                                                    advertise_version=None,
                                                    signal_error=None,
                                                    welcome_motd=None,
