@@ -109,16 +109,54 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self._mailbox = None
         self._mailbox_id = None
         self._did_close = False
+        self._peer_addr_port = None
 
     def onConnect(self, request):
         rv = self.factory.server
+        log.msg("-- CONNECT", request)
+        # Caddy uses capitalized headers like X-Real-IP and X-Real-Port, which
+        # you see if you forward Caddy to netcat. But the twisted/autobahn
+        # Request object lowercases everything.
+        if "x-real-ip" in request.headers:
+            peer_host = request.headers.get("x-real-ip") # either 1.2.3.4 or 2600:..:1234
+            peer_port = request.headers.get("x-real-port")
+            # assume frontends like Caddy don't give us v4-in-v6 addrs
+            peer_type = "ipv6" if ":" in peer_host else "ipv4"
+        else:
+            peer = request.peer
+            peer_type = peer.split(":", maxsplit=1)[0]
+            peer_port = peer.rsplit(":", maxsplit=1)[-1]
+            peer_host = peer[len(peer_type)+1:(-len(peer_port)-1)]
+            # this gets me [tcp6, ::1, 53276] for a client using ws://localhost:4000/v1
+            #  or ws://[::1]:4000/v1
+            # and [tcp6, ::ffff:127.0.0.1, 53279] when using ws://127.0.0.1:4000/v1
+            if peer_type == "tcp6":
+                peer_type = "ipv6"
+                if peer_host.startswith("::ffff:"):
+                    peer_host = peer_host.rsplit(":", maxsplit=1)[-1]
+                    peer_type = "ipv4"
+            else:
+                peer_type = "ipv4"
+        self._peer_addr_port = (peer_type, peer_host, int(peer_port))
+        log.msg("peer (from req): [%s, %s, %s]" % (peer_type, peer_host, peer_port))
+
         if rv.get_log_requests():
             log.msg("ws client connecting: %s" % (request.peer,))
         self._reactor = self.factory.reactor
 
+    def get_you(self):
+        (peer_type, peer_host, peer_port) = self._peer_addr_port
+        you = { "port": peer_port }
+        if peer_type == "ipv4":
+            you["ipv4"] = peer_host
+        elif peer_host == "ipv6":
+            you["ipv6"] = peer_host
+        return you
+
     def onOpen(self):
         rv = self.factory.server
-        self.send("welcome", welcome=rv.get_welcome())
+        log.msg("-- OPEN, sending welcome")
+        self.send("welcome", welcome=rv.get_welcome(self))
 
     def onMessage(self, payload, isBinary):
         server_rx = time.time()

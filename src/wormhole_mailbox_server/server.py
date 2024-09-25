@@ -564,8 +564,10 @@ class Server(service.MultiService):
         self._log_file = log_file
         self._apps = {}
 
-    def get_welcome(self):
-        return self._welcome
+    def get_welcome(self, p):
+        welcome = self._welcome.copy()
+        welcome["you"] = p.get_you()
+        return welcome
     def get_log_requests(self):
         return self._log_requests
 

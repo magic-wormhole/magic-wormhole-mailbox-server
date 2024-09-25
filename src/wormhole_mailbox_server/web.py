@@ -20,7 +20,7 @@ def make_web_server(server, log_requests, websocket_protocol_options=()):
     root = Root()
     wsrf = WebSocketServerFactory(None, server)
     wsrf.setProtocolOptions(**dict(websocket_protocol_options))
-    root.putChild(b"v1", WebSocketResource(wsrf))
+    root.putChild(b"v2", WebSocketResource(wsrf))
 
     site = PrivacyEnhancedSite(root)
     site.logRequests = log_requests
