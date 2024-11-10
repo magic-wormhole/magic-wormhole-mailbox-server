@@ -33,8 +33,8 @@ release:
 	gpg --pinentry=loopback -u meejah@meejah.ca --armor --clear-sign NEWS.md
 
 	@echo "Bump version and create tag"
-#	python update-version.py
-	python update-version.py --patch  # for bugfix release
+	python update-version.py
+#	python update-version.py --patch  # for bugfix release
 
 	@echo "Build and sign wheel"
 	python setup.py bdist_wheel
