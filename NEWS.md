@@ -3,6 +3,7 @@ User-visible changes in "magic-wormhole-mailbox-server":
 
 ## Upcoming
 
+* properly require "setuptools" for install (#47, jameshilliard)
 * (put release-note here when merging / proposing a PR)
 
 
