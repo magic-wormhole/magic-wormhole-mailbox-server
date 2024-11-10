@@ -3,8 +3,12 @@ User-visible changes in "magic-wormhole-mailbox-server":
 
 ## Upcoming
 
-* properly require "setuptools" for install (#47, jameshilliard)
 * (put release-note here when merging / proposing a PR)
+
+
+## Release 0.5.1 (9-Nov-2024)
+
+* properly require "setuptools" for install (#47, jameshilliard)
 
 
 ## Release 0.5.0 (7-Nov-2024)
