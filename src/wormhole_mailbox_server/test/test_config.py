@@ -19,7 +19,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": None,
                              "websocket-protocol-options": [],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_advertise_version(self):
@@ -36,7 +36,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": None,
                              "websocket-protocol-options": [],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_blur(self):
@@ -53,7 +53,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": None,
                              "websocket-protocol-options": [],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_channel_db(self):
@@ -70,7 +70,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": None,
                              "websocket-protocol-options": [],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_disallow_list(self):
@@ -87,7 +87,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": None,
                              "websocket-protocol-options": [],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_log_fd(self):
@@ -104,7 +104,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": 5,
                              "websocket-protocol-options": [],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_port(self):
@@ -121,7 +121,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": None,
                              "websocket-protocol-options": [],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
         o = server_tap.Options()
@@ -137,7 +137,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": None,
                              "websocket-protocol-options": [],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_signal_error(self):
@@ -154,7 +154,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": None,
                              "websocket-protocol-options": [],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_usage_db(self):
@@ -171,7 +171,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": None,
                              "websocket-protocol-options": [],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_websocket_protocol_option_1(self):
@@ -188,7 +188,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "log-fd": None,
                              "websocket-protocol-options": [("foo", "bar")],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_websocket_protocol_option_2(self):
@@ -209,7 +209,7 @@ class Config(unittest.TestCase):
                              "websocket-protocol-options": [("foo", "bar"),
                                                             ("baz", [1, "buz"]),
                                                             ],
-                             "permissions": "none",
+                             "permissions": set(),
                              })
 
     def test_websocket_protocol_option_errors(self):
@@ -235,7 +235,7 @@ class Config(unittest.TestCase):
         o.parseOptions([
             "--permissions", "none",
         ])
-        self.assertEquals(o["permissions"], "none")
+        self.assertEquals(o["permissions"], {"none"})
 
     def test_permissions_invalid(self):
         o = server_tap.Options()
