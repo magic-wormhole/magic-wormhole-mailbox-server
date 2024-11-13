@@ -766,7 +766,7 @@ class Permissions(ServerBase, unittest.TestCase):
 
     @inlineCallbacks
     def test_hashcash(self):
-        yield self._setup_relay(do_listen=True, permission_provider=create_permission_provider("hashcash"))
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
         c = yield self.make_client()
         welcome = yield c.next_non_ack()
         self.assertIn(
@@ -780,7 +780,7 @@ class Permissions(ServerBase, unittest.TestCase):
 
     @inlineCallbacks
     def test_hashcash_invalid_fields(self):
-        yield self._setup_relay(do_listen=True, permission_provider=create_permission_provider("hashcash"))
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
         c = yield self.make_client()
         yield c.next_non_ack()
         yield c.send("submit-permissions", method="hashcash", stamp="wrong")
@@ -790,7 +790,7 @@ class Permissions(ServerBase, unittest.TestCase):
 
     @inlineCallbacks
     def test_hashcash_wrong_version(self):
-        yield self._setup_relay(do_listen=True, permission_provider=create_permission_provider("hashcash"))
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
         c = yield self.make_client()
         yield c.next_non_ack()
         yield c.send("submit-permissions", method="hashcash", stamp="0:2:*:*:*:*:*")
@@ -800,7 +800,7 @@ class Permissions(ServerBase, unittest.TestCase):
 
     @inlineCallbacks
     def test_hashcash_wrong_resource(self):
-        yield self._setup_relay(do_listen=True, permission_provider=create_permission_provider("hashcash"))
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
         c = yield self.make_client()
         yield c.next_non_ack()
         yield c.send("submit-permissions", method="hashcash", stamp="1:2:date:resource:*:*:*")
@@ -810,7 +810,7 @@ class Permissions(ServerBase, unittest.TestCase):
 
     @inlineCallbacks
     def test_hashcash_correct(self):
-        yield self._setup_relay(do_listen=True, permission_provider=create_permission_provider("hashcash"))
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
 
         if not hasattr(shutil, "which") or not shutil.which("hashcash"):
             raise unittest.SkipTest("no 'hashcash' binary installed")
@@ -842,7 +842,7 @@ class Permissions(ServerBase, unittest.TestCase):
 
     @inlineCallbacks
     def test_hashcash_wrong_bits(self):
-        yield self._setup_relay(do_listen=True, permission_provider=create_permission_provider("hashcash"))
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
 
         if not hasattr(shutil, "which") or not shutil.which("hashcash"):
             raise unittest.SkipTest("no 'hashcash' binary installed")

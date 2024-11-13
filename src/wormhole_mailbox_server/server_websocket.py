@@ -215,9 +215,19 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self._app.log_client_version(server_rx, self._side, client_version)
 
     def handle_submit_permissions(self, msg, server_rx):
-        if msg.get("method", None) != self._permission.name:
-            raise Error("need permission method '{}'".format(self._permission.name))
-        self._permission_passed = self._permission.verify_permission(msg)
+        kind = msg.get("method", "none")
+
+        active_perm = None
+        available_perms = set()
+        for perm in self._permissions:
+            available_perms.add(perm.name)
+            if kind == perm.name:
+                active_perm = perm
+
+        if active_perm is None:
+            raise Error("'{}' is not one of: {}".format(kind, ", ".join(sorted(available_perms))))
+
+        self._permission_passed = active_perm.verify_permission(msg)
         if not self._permission_passed:
             raise Error("submit-permission failed")
 
