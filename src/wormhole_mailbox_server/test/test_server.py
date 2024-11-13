@@ -1,9 +1,7 @@
 from __future__ import print_function, unicode_literals
-import mock
 import subprocess
 import packaging.version
-from unittest import SkipTest
-
+from unittest import SkipTest, mock
 from twisted.trial import unittest
 from twisted.python import log
 from twisted.internet.defer import inlineCallbacks, Deferred
