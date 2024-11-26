@@ -1,10 +1,26 @@
 from __future__ import print_function, unicode_literals
-from unittest import mock
+import subprocess
+import packaging.version
+from unittest import SkipTest, mock
 from twisted.trial import unittest
 from twisted.python import log
+from twisted.internet.defer import inlineCallbacks, Deferred
+from twisted.internet.address import IPv4Address
+import autobahn
+from autobahn.twisted.testing import create_pumper, create_memory_agent, MemoryReactorClockResolver
+from autobahn.twisted.websocket import WebSocketClientProtocol
 from .common import ServerBase, _Util
 from ..server import (make_server, Usage,
                       SidedMessage, CrowdedError, AppNamespace)
+from ..permission import (
+    create_permission_provider,
+    NoPermission,
+    HashcashPermission,
+)
+
+from ..server_websocket import WebSocketServerFactory
+from ..util import bytes_to_dict, dict_to_bytes
+
 from ..database import create_channel_db, create_usage_db
 
 
@@ -627,6 +643,142 @@ class MakeServer(unittest.TestCase):
         db = create_channel_db(":memory:")
         s = make_server(db, welcome_motd="hello world")
         self.assertEqual(s.get_welcome(), {"motd": "hello world"})
+
+
+class Permissions(unittest.TestCase):
+    """
+    Test configurion of permissions
+    """
+
+    def test_hashcash_permission(self):
+        db = create_channel_db(":memory:")
+        s = make_server(db, permission_providers=[create_permission_provider("hashcash")])
+        providers = s.instantiate_permission_providers()
+        self.assertEqual(
+            {type(p) for p in providers},
+            {HashcashPermission}
+        )
+
+    def test_no_permission(self):
+        db = create_channel_db(":memory:")
+        s = make_server(db, permission_providers=[create_permission_provider("none")])
+        providers = s.instantiate_permission_providers()
+        self.assertEqual(
+            {type(p) for p in providers},
+            {NoPermission}
+        )
+
+    def test_default_permission(self):
+        db = create_channel_db(":memory:")
+        s = make_server(db)
+        providers = s.instantiate_permission_providers()
+        self.assertEqual(
+            {type(p) for p in providers},
+            {NoPermission}
+        )
+
+
+class PermissionsServer(unittest.TestCase):
+    """
+    Test operation of the WebSocket permissions / submit-permissions.
+    """
+
+    def setUp(self):
+        if packaging.version.parse(autobahn.version) <= packaging.version.parse("22.6.1"):
+            raise SkipTest("need newer Autobahn to run this test")
+
+    @inlineCallbacks
+    def test_submit_success(self):
+        """
+        Submit a successful hashcash stamp given a challenge.
+
+        Note: this needs the command-line tool "hashcash" to run.
+        """
+        reactor = MemoryReactorClockResolver()
+        pump = create_pumper()
+        self.addCleanup(pump.stop)
+
+        def create_proto():
+            server = make_server(create_channel_db(":memory:"), permission_providers=[create_permission_provider("hashcash")])
+            factory = WebSocketServerFactory("ws://127.0.0.1:1", server)
+            addr = IPv4Address("TCP", "127.0.0.1", "0")
+            proto = factory.buildProtocol(addr)
+            proto.factory = factory
+
+            def shutdown():
+                return proto.is_closed
+            self.addCleanup(shutdown)
+            return proto
+
+        agent = create_memory_agent(reactor, pump, create_proto)
+        pump.start()
+
+        class Client(WebSocketClientProtocol):
+            def onOpen(self):
+                self.messages = []
+                self._awaiting = []
+
+            def onMessage(self, msg_data, isBinary):
+                msg = bytes_to_dict(msg_data)
+                if self._awaiting:
+                    self._awaiting, notify = [], self._awaiting
+                    for d in notify:
+                        d.callback(msg)
+                else:
+                    self.messages.append(msg)
+
+            def await_message(self):
+                d = Deferred()
+                if self.messages:
+                    msg = self.messages.pop(0)
+                    d.callback(msg)
+                else:
+                    self._awaiting.append(d)
+                return d
+
+        client = yield agent.open("ws://127.0.0.1:1/", {}, protocol_class=Client)
+
+        def shutdown():
+            client.dropConnection(abort=False)
+            return client.is_closed
+        self.addCleanup(shutdown)
+
+        # should have sent Welcome
+        msg = yield client.await_message()
+        self.assertEqual(msg["type"], "welcome")
+        welcome = msg["welcome"]
+        self.assertIn("permission-required", welcome)
+        hc = welcome["permission-required"]["hashcash"]
+
+        try:
+            stamp = subprocess.check_output([
+                "hashcash", "-m", "-C", "-b", str(hc["bits"]), "-r", hc["resource"]
+            ])
+        except Exception as e:
+            raise unittest.SkipTest("skipping: no hashcash: {}".format(e))
+
+        submit_permissions = {
+            "type": "submit-permissions",
+            "method": "hashcash",
+            "stamp": stamp.decode("utf8").strip(),
+        }
+        client.sendMessage(dict_to_bytes(submit_permissions), False)
+
+        msg = yield client.await_message()
+        self.assertEqual("ack", msg["type"])
+
+        # when we successfully submit permissions, "nothing happens"
+        # -- there would be an error message if there's a problem. If
+        # we did successfully do permissions, though, we can allocate
+        # now
+        client.sendMessage(dict_to_bytes({"type": "bind"}), False)
+
+        # if we did the permissions successfully before, this will be
+        # another ack -- but if permissions had failed, this would be
+        # an error message
+        msg = yield client.await_message()
+        self.assertEqual("ack", msg["type"])
+
 
 # exercise _find_available_nameplate_id failing
 # exercise CrowdedError
