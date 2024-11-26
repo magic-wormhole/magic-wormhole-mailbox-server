@@ -1,0 +1,92 @@
+@startuml
+
+skinparam defaultFontName "Source Sans Pro"
+skinparam defaultFontSize 18
+skinparam participantFontSize 22
+skinparam arrowFontSize 18
+skinparam noteFontSize 22
+
+title Magic Folder Server
+
+  alice <- mailbox: welcome
+  alice -> mailbox: bind appid, side
+
+  alice -> mailbox: allocate
+  alice <- mailbox: allocated: nameplate_id
+
+activate alice #aaddff
+
+  alice -> mailbox: claim nameplate_id
+  alice <- mailbox: claimed: mailbox_id
+  alice -> mailbox: open mailbox_id
+
+  alice -> mailbox: add phase=pake body
+  alice <- mailbox: message phase=pake side=a body
+
+... code communicated out-of-band ...
+
+  bob <- mailbox: welcome
+  bob -> mailbox: bind appid, side
+  bob -> mailbox: claim nameplate_id
+  bob <- mailbox: claimed: mailbox_id
+  bob -> mailbox: open mailbox_id
+  bob <- mailbox: message phase=pake side=a body
+  bob -> mailbox: add phase=pake body
+  bob <- mailbox: mesage phase=pake side=b body
+
+  alice <- mailbox: mesage phase=pake side=b body
+  alice -> mailbox: release nameplate_id
+  alice <- mailbox: released
+
+deactivate alice
+
+note over mailbox #eeeeee: Key-Verification messages double as version exchange
+
+  alice -> mailbox: add phase=version side=a body
+
+  bob <- mailbox: message phase=version side=a body
+  alice <- mailbox: message phase=version side=a body
+
+  bob -> mailbox: add phase=version side=b body
+  bob <- mailbox: message phase=version side=b body
+activate bob #lightgreen
+  alice <- mailbox: message phase=version side=b body
+
+activate alice #lightgreen
+
+  alice -> mailbox: add phase=0 side=a body
+  alice <- mailbox: message phase=0 side=a body
+  bob   <- mailbox: message phase=0 side=a body
+
+' XXX does this help or hinter understanding?
+  alice -->> bob: (effectively msg 0 from alice->bob)
+
+  alice -> mailbox: add phase=1 side=a body
+  alice <- mailbox: message phase=1 side=a body
+  bob   <- mailbox: message phase=1 side=a body
+
+' XXX does this help or hinter understanding?
+  alice -->> bob: (effectively msg 1 from alice->bob)
+
+  bob -> mailbox: add phase=0 side=b body
+  bob   <- mailbox: message phase=0 side=b body
+  alice <- mailbox: message phase=0 side=b body
+
+' XXX does this help or hinter understanding?
+  alice <<-- bob: (effectively msg 0 from bob->alice)
+
+deactivate alice
+deactivate bob
+
+' group #Pink Closing
+group Closing
+
+  bob -> mailbox: close mailbox_id mood
+  bob <- mailbox: closed
+
+  alice -> mailbox: close mailbox_id mood
+  alice <- mailbox: closed
+
+end
+
+@enduml
