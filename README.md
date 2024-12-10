@@ -80,7 +80,7 @@ Dockerfile content:
 ```dockerfile
 FROM python:3.11
 RUN pip install magic-wormhole-mailbox-server
-CMD [ "twist", "wormhole-mailbox","--usage-db=usage.sqlite" ] 
+CMD [ "twist", "wormhole-mailbox","--usage-db=usage.sqlite" ]
 ```
 > Note: This will be running as root, you should adjust it to be in user space for production.
 
