@@ -4,7 +4,7 @@ from unittest import mock
 import treq
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks
 from ..web import make_web_server
 from ..server import SidedMessage
 from ..database import create_or_upgrade_usage_db
@@ -38,7 +38,7 @@ class LogRequests(ServerBase, unittest.TestCase):
         reactor.connectTCP("127.0.0.1", self.rdv_ws_port, f)
         c = yield f.d
         self._clients.append(c)
-        returnValue(c)
+        return c
 
     @inlineCallbacks
     def test_log_http(self):
@@ -108,7 +108,7 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         reactor.connectTCP("127.0.0.1", self.rdv_ws_port, f)
         c = yield f.d
         self._clients.append(c)
-        returnValue(c)
+        return c
 
     def check_welcome(self, data):
         self.failUnlessIn("welcome", data)

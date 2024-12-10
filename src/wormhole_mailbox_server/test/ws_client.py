@@ -1,7 +1,7 @@
 from __future__ import print_function, unicode_literals
 import json, itertools
 from twisted.internet import defer
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks
 from autobahn.twisted import websocket
 
 class WSClient(websocket.WebSocketClientProtocol):
@@ -49,7 +49,7 @@ class WSClient(websocket.WebSocketClientProtocol):
                 print("unexpected onClose", m)
                 raise AssertionError("unexpected onClose")
             if m["type"] != "ack":
-                returnValue(m)
+                return m
 
     def strip_acks(self):
         self.events = [e for e in self.events if e["type"] != "ack"]
@@ -73,7 +73,7 @@ class WSClient(websocket.WebSocketClientProtocol):
             ev = yield self.next_event()
             if ev["type"] == "pong" and ev["pong"] == ping:
                 self.events = old_events + self.events
-                returnValue(None)
+                return None
             old_events.append(ev)
 
 class WSFactory(websocket.WebSocketClientFactory):
