@@ -3,7 +3,7 @@ import time
 from twisted.internet import reactor
 from twisted.python import log
 from autobahn.twisted import websocket
-from .server import CrowdedError, ReclaimedError, SidedMessage
+from .server import CrowdedError, ReclaimedError, UnknownNameplateError, SidedMessage
 from .util import dict_to_bytes, bytes_to_dict
 
 # The WebSocket allows the client to send "commands" to the server, and the
@@ -69,7 +69,7 @@ from .util import dict_to_bytes, bytes_to_dict
 # -> {type: "list"} -> nameplates
 #  <- {type: "nameplates", nameplates: [{id: str,..},..]}
 # -> {type: "allocate"} -> nameplate, mailbox
-#  <- {type: "allocated", nameplate: str}
+#  <- {type: "allocated", nameplate: str, mailbox: str}
 # -> {type: "claim", nameplate: str} -> mailbox
 #  <- {type: "claimed", mailbox: str}
 # -> {type: "release"}
@@ -185,27 +185,33 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
     def handle_allocate(self, server_rx):
         if self._did_allocate:
             raise Error("you already allocated one, don't be greedy")
-        nameplate_id = self._app.allocate_nameplate(self._side, server_rx)
+        nameplate_id, mailbox_id = self._app.allocate_nameplate(self._side, server_rx)
         assert isinstance(nameplate_id, type(""))
         self._did_allocate = True
-        self.send("allocated", nameplate=nameplate_id)
+        self.send("allocated", nameplate=nameplate_id, mailbox=mailbox_id)
 
     def handle_claim(self, msg, server_rx):
         if "nameplate" not in msg:
             raise Error("claim requires 'nameplate'")
+        allow_allocate = True
+        if "allocate" in msg:
+            allow_allocate = msg["allocate"]
+
         if self._did_claim:
             raise Error("only one claim per connection")
-        self._did_claim = True
         nameplate_id = msg["nameplate"]
         assert isinstance(nameplate_id, type("")), type(nameplate_id)
         self._nameplate_id = nameplate_id
         try:
             mailbox_id = self._app.claim_nameplate(nameplate_id, self._side,
-                                                   server_rx)
+                                                   server_rx, allow_allocate)
         except CrowdedError:
             raise Error("crowded")
         except ReclaimedError:
             raise Error("reclaimed")
+        except UnknownNameplateError:
+            raise Error("unallocated")
+        self._did_claim = True
         self.send("claimed", mailbox=mailbox_id)
 
     def handle_release(self, msg, server_rx):

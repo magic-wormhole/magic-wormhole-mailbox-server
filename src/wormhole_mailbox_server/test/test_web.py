@@ -94,7 +94,8 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         self._usage_db = usage_db = create_or_upgrade_usage_db(":memory:")
         yield self._setup_relay(do_listen=True,
                                 advertise_version="advertised.version",
-                                usage_db=usage_db)
+                                usage_db=usage_db,
+                                allow_list=True)
 
     def tearDown(self):
         for c in self._clients:
@@ -222,7 +223,7 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         self.assertEqual(m["nameplates"], [])
 
         app = self._server.get_app("appid")
-        nameplate_id1 = app.allocate_nameplate("side", 0)
+        nameplate_id1, mailbox_id1 = app.allocate_nameplate("side", 0)
         app.claim_nameplate("np2", "side", 0)
 
         c1.send("list")
@@ -279,6 +280,11 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         err = yield c1.next_non_ack()
         self.assertEqual(err["type"], "error")
         self.assertEqual(err["error"], "claim requires 'nameplate'")
+
+        c1.send("claim", nameplate="np1", allocate=False) # not allocated
+        err = yield c1.next_non_ack()
+        self.assertEqual(err["type"], "error")
+        self.assertEqual(err["error"], "unallocated")
 
         c1.send("claim", nameplate="np1")
         m = yield c1.next_non_ack()
