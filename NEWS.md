@@ -3,6 +3,7 @@ User-visible changes in "magic-wormhole-mailbox-server":
 
 ## Upcoming
 
+* add "permissions" implementation, with hashcash (a DoS mitigation)
 * (put release-note here when merging / proposing a PR)
 * CI no longer tests Python 3.8 (it is EOL)
 
@@ -18,7 +19,6 @@ User-visible changes in "magic-wormhole-mailbox-server":
 * remove python2 support
 * test on python 3.8, 3.9, 3.10, 3.11 and 3.12 series
 * drop "six" (#35)
-* upgrade "versioneer"
 
 
 ## Release 0.4.1 (11-Sep-2019)

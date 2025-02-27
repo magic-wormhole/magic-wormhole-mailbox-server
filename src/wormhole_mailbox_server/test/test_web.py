@@ -2,12 +2,15 @@ from __future__ import print_function, unicode_literals
 import io, time
 from unittest import mock
 import treq
+import shutil
+import subprocess
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from twisted.internet.defer import inlineCallbacks
 from ..web import make_web_server
 from ..server import SidedMessage
 from ..database import create_or_upgrade_usage_db
+from ..permission import create_permission_provider
 from .common import ServerBase, _Util
 from .ws_client import WSFactory
 
@@ -740,3 +743,131 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         yield c.d
 
 
+class Permissions(ServerBase, unittest.TestCase):
+    """
+    Test permission/submit-permission functionality
+    """
+    def setUp(self):
+        self._clients = []
+
+    def tearDown(self):
+        for c in self._clients:
+            c.transport.loseConnection()
+        return ServerBase.tearDown(self)
+
+    @inlineCallbacks
+    def make_client(self):
+        f = WSFactory(self.relayurl)
+        f.d = defer.Deferred()
+        reactor.connectTCP("127.0.0.1", self.rdv_ws_port, f)
+        c = yield f.d
+        self._clients.append(c)
+        returnValue(c)
+
+    @inlineCallbacks
+    def test_hashcash(self):
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
+        c = yield self.make_client()
+        welcome = yield c.next_non_ack()
+        self.assertIn(
+            "permission-required",
+            welcome["welcome"],
+        )
+        self.assertIn(
+            "hashcash",
+            welcome["welcome"]["permission-required"],
+        )
+
+    @inlineCallbacks
+    def test_hashcash_invalid_fields(self):
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
+        c = yield self.make_client()
+        yield c.next_non_ack()
+        yield c.send("submit-permissions", method="hashcash", stamp="wrong")
+        err = yield c.next_non_ack()
+        self.assertIn("error", err)
+        self.assertIn("submit-permission failed", err["error"])
+
+    @inlineCallbacks
+    def test_hashcash_wrong_version(self):
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
+        c = yield self.make_client()
+        yield c.next_non_ack()
+        yield c.send("submit-permissions", method="hashcash", stamp="0:2:*:*:*:*:*")
+        err = yield c.next_non_ack()
+        self.assertIn("error", err)
+        self.assertIn("submit-permission failed", err["error"])
+
+    @inlineCallbacks
+    def test_hashcash_wrong_resource(self):
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
+        c = yield self.make_client()
+        yield c.next_non_ack()
+        yield c.send("submit-permissions", method="hashcash", stamp="1:2:date:resource:*:*:*")
+        err = yield c.next_non_ack()
+        self.assertIn("error", err)
+        self.assertIn("submit-permission failed", err["error"])
+
+    @inlineCallbacks
+    def test_hashcash_correct(self):
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
+
+        if not hasattr(shutil, "which") or not shutil.which("hashcash"):
+            raise unittest.SkipTest("no 'hashcash' binary installed")
+        c = yield self.make_client()
+        welcome = yield c.next_non_ack()
+
+        stamp = subprocess.check_output([
+            "hashcash",
+            "-C",  # case-sensitive
+            "-m",  # mint
+            "-b", str(welcome["welcome"]["permission-required"]["hashcash"]["bits"]),
+            "-r", welcome["welcome"]["permission-required"]["hashcash"]["resource"],
+        ]).decode("utf8").strip()
+
+        # put something in the mailbox so that when we successfully
+        # open it, we get a non-ACK back and the test can exit
+        # properly.
+        self._server.get_app("appid").open_mailbox("mb1", "side", 0).add_message(
+            SidedMessage(side="side", phase="phase", body="body", server_rx=0, msg_id="msgid")
+        )
+
+        c.send("submit-permissions", method="hashcash", stamp=stamp)
+        c.send("bind", appid="appid", side="side")
+        c.send("open", mailbox="mb1")
+
+        msg = yield c.next_non_ack()
+        self.assertEqual(msg["type"], "message")
+        self.assertEqual(msg["body"], "body")
+
+    @inlineCallbacks
+    def test_hashcash_wrong_bits(self):
+        yield self._setup_relay(do_listen=True, permission_providers=[create_permission_provider("hashcash")])
+
+        if not hasattr(shutil, "which") or not shutil.which("hashcash"):
+            raise unittest.SkipTest("no 'hashcash' binary installed")
+        c = yield self.make_client()
+        welcome = yield c.next_non_ack()
+
+        stamp = subprocess.check_output([
+            "hashcash",
+            "-C",  # case-sensitive
+            "-m",  # mint
+            "-b", "2",  # too-few bits
+            "-r", welcome["welcome"]["permission-required"]["hashcash"]["resource"],
+        ]).decode("utf8").strip()
+
+        # put something in the mailbox so that when we successfully
+        # open it, we get a non-ACK back and the test can exit
+        # properly.
+        self._server.get_app("appid").open_mailbox("mb1", "side", 0).add_message(
+            SidedMessage(side="side", phase="phase", body="body", server_rx=0, msg_id="msgid")
+        )
+
+        c.send("submit-permissions", method="hashcash", stamp=stamp)
+        c.send("bind", appid="appid", side="side")
+        c.send("open", mailbox="mb1")
+
+        msg = yield c.next_non_ack()
+        self.assertIn("error", msg)
+        self.assertEqual(msg["error"], "submit-permission failed")
