@@ -21,7 +21,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
         # this takes a second, and claims all the short-numbered nameplates
         def add():
             nameplate_id = app.allocate_nameplate("side1", 0)
-            self.assertEqual(type(nameplate_id), type(""))
+            self.assertEqual(type(nameplate_id), str)
             nid = int(nameplate_id)
             nids.add(nid)
         for i in range(9): add()
@@ -55,7 +55,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
     def test_nameplate(self):
         app = self._server.get_app("appid")
         name = app.allocate_nameplate("side1", 0)
-        self.assertEqual(type(name), type(""))
+        self.assertEqual(type(name), str)
         nid = int(name)
         self.assert_(0 < nid < 10, nid)
         self.assertEqual(app.get_nameplate_ids(), set([name]))
@@ -67,7 +67,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
 
         # duplicate claims by the same side are combined
         mailbox_id = app.claim_nameplate(name, "side1", 1)
-        self.assertEqual(type(mailbox_id), type(""))
+        self.assertEqual(type(mailbox_id), str)
         self.assertEqual(mailbox_id, np_row["mailbox_id"])
         np_row, side_rows = self._nameplate(app, name)
         self.assertEqual(len(side_rows), 1)

@@ -284,7 +284,7 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         m = yield c1.next_non_ack()
         self.assertEqual(m["type"], "claimed")
         mailbox_id = m["mailbox"]
-        self.assertEqual(type(mailbox_id), type(""))
+        self.assertEqual(type(mailbox_id), str)
 
         c1.send("claim", nameplate="np1")
         err = yield c1.next_non_ack()
@@ -596,7 +596,7 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         m = yield c.next_non_ack()
         self.assertEqual(m["type"], "claimed")
         mailbox_id = m["mailbox"]
-        self.assertEqual(type(mailbox_id), type(""))
+        self.assertEqual(type(mailbox_id), str)
         np_row, side_rows = self._nameplate(app, "np1")
         claims = [(row["side"], row["claimed"]) for row in side_rows]
         self.assertEqual(claims, [("side", True)])
