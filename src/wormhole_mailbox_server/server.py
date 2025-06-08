@@ -33,7 +33,7 @@ class Mailbox:
 
     def open(self, side, when):
         # requires caller to db.commit()
-        assert isinstance(side, type("")), type(side)
+        assert isinstance(side, str), type(side)
         db = self._db
 
         already = db.execute("SELECT * FROM `mailbox_sides`"
@@ -115,7 +115,7 @@ class Mailbox:
         self.broadcast_message(sm)
 
     def close(self, side, mood, when):
-        assert isinstance(side, type("")), type(side)
+        assert isinstance(side, str), type(side)
         db = self._db
         row = db.execute("SELECT * FROM `mailboxes`"
                          " WHERE `app_id`=? AND `id`=?",
@@ -243,8 +243,8 @@ class AppNamespace(object):
         #  * there will be one 'side' attached to it, with claimed=True
         # * a mailbox id and mailbox row will be created
         #  * a mailbox 'side' will be attached, with opened=True
-        assert isinstance(name, type("")), type(name)
-        assert isinstance(side, type("")), type(side)
+        assert isinstance(name, str), type(name)
+        assert isinstance(side, str), type(side)
         db = self._db
         row = db.execute("SELECT * FROM `nameplates`"
                          " WHERE `app_id`=? AND `name`=?",
@@ -294,8 +294,8 @@ class AppNamespace(object):
         #  * a usage record will be added
         #  * the nameplate row will be removed
         #  * the nameplate sides will be removed
-        assert isinstance(name, type("")), type(name)
-        assert isinstance(side, type("")), type(side)
+        assert isinstance(name, str), type(name)
+        assert isinstance(side, str), type(side)
         db = self._db
         np_row = db.execute("SELECT * FROM `nameplates`"
                             " WHERE `app_id`=? AND `name`=?",
@@ -359,7 +359,7 @@ class AppNamespace(object):
                      total_time=total_time, result=result)
 
     def _add_mailbox(self, mailbox_id, for_nameplate, side, when):
-        assert isinstance(mailbox_id, type("")), type(mailbox_id)
+        assert isinstance(mailbox_id, str), type(mailbox_id)
         db = self._db
         row = db.execute("SELECT * FROM `mailboxes`"
                          " WHERE `app_id`=? AND `id`=?",
@@ -373,7 +373,7 @@ class AppNamespace(object):
             # does SELECT FROM `mailbox_sides`, not from `mailboxes`
 
     def open_mailbox(self, mailbox_id, side, when):
-        assert isinstance(mailbox_id, type("")), type(mailbox_id)
+        assert isinstance(mailbox_id, str), type(mailbox_id)
         self._add_mailbox(mailbox_id, False, side, when) # ensure row exists
         db = self._db
         if not mailbox_id in self._mailboxes: # ensure Mailbox object exists
@@ -570,7 +570,7 @@ class Server(service.MultiService):
         return self._log_requests
 
     def get_app(self, app_id):
-        assert isinstance(app_id, type(""))
+        assert isinstance(app_id, str)
         if not app_id in self._apps:
             if self._log_requests:
                 log.msg("spawning app_id %s" % (app_id,))
