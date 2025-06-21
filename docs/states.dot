@@ -1,0 +1,74 @@
+/*digraph {
+    title [label="Mailbox\lServer Machine" style="dotted"]
+
+    start -> opened [label="open(side)"];
+
+    opened -> opened [label="open(side)"];
+    opened -> opened [label="add_message(sided_message)"];
+    opened -> closing [label="close(side, mood)"];
+
+    closing -> closing [label="close(side, mood)"];
+}
+*/
+
+
+// note: all messages have an "id" and a "type"
+// and the server sends back an "ack" for every one
+// but that ack etc isn't covered in these diagrams
+
+digraph {
+    node [fontname = "Source Sans Pro" fontsize = 22];
+    edge [fontname = "Source Code Pro" fontsize = 18 fontcolor=blue];
+    graph [fontname = "Source Sans Pro" fontsize = 22];
+
+    title [label="Mailbox Server" style="dotted" fontsize=32];
+
+    ranksep = 1;
+
+    start [label="START\n(perm=none)"];
+    start_permissions [label="START\n(perm=hashcash)"];
+    start_reconn [label="RECONNECT\n(mailbox, perm=none)"];
+    start_reconn_perm [label="RECONNECT\n(mailbox, perm=hashcash)"];
+    done [label="DONE\nmood=" shape=box style=filled];
+
+    {rank=same; start start_permissions start_reconn start_reconn_perm}
+    start [shape=box, style=bold];
+    start -> bound [label="bind(appid, side)"];
+
+    # blue, to match seqdiag section on "nameplate allocated"
+    bound [fillcolor=cadetblue1, style=filled];
+    have_nameplate [fillcolor=cadetblue1, style=filled];
+    claimed [fillcolor=cadetblue1, style=filled];
+
+    start_permissions [shape=box, style=bold];
+    start_permissions -> granted [label="submit_permissions()" fontcolor=red];
+    granted -> bound [label="bind(appid, side)"];
+
+    start_reconn [shape=box, style=bold];
+    start_reconn -> open [label="open(mailbox_id)\l-> messages: send(side, phase, body)\l"];
+
+    start_reconn_perm [shape=box, style=bold];
+    start_reconn_perm -> reconn_granted [label="submit_permissions()" fontcolor=red];
+    open [fillcolor=green style=filled];
+    reconn_granted -> open [label="open(mailbox_id)\l-> messages: send(side, phase, body)\l"];
+
+    bound -> have_nameplate [label="allocate()\l-> nameplate_id\l"]
+    # allocate() really does do a claim() .. but you have to call it explicitly too
+    have_nameplate -> claimed [label="claim(nameplate, side)\l-> mailbox_id\l" fontcolor=darkgreen]
+    have_nameplate -> done [label="release(nameplate)" fontcolor=red]
+
+    # ths is on the "join" side; they are told the nameplate number
+    bound -> claimed [label="claim(nameplate, side)\l-> mailbox_id\l" fontcolor=darkgreen]
+    claimed -> unclaimed [label="release(nameplate)" fontcolor=red]
+
+    # note: allowing two different paths to 'unclaimed' is I think
+    # _allowed_ currently by the server, but better to define it with
+    # juts one way probably.
+
+    unclaimed -> open [label="open(mailbox_id)\l-> messages: send(side, phase, body)\l"]
+    #claimed -> open [label="open(mailbox_id)\l-> send(all_messages)\l"]
+    #open -> open [label="release(nameplate)"]
+    open -> open [label="add_message(msg)\l-> send(side, phase, body)\l"]
+    open ->      done [label="close(mailbox_id)" fontcolor=red]
+    # XXX will get all message already in the box, how to represent?
+}
