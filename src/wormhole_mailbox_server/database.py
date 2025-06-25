@@ -34,7 +34,7 @@ def dict_factory(cursor, row):
 def _initialize_db_schema(db, name, target_version):
     """Creates the application schema in the given database.
     """
-    log.msg("populating new database with schema %s v%s" % (name, target_version))
+    log.msg(f"populating new database with schema {name} v{target_version}")
     schema = get_schema(name, target_version)
     db.executescript(schema)
     db.execute("INSERT INTO version (version) VALUES (?)",
@@ -49,7 +49,7 @@ def _initialize_db_connection(db):
     db.execute("PRAGMA foreign_keys = ON")
     problems = db.execute("PRAGMA foreign_key_check").fetchall()
     if problems:
-        raise DBError("failed foreign key check: %s" % (problems,))
+        raise DBError(f"failed foreign key check: {problems}")
 
 def _open_db_connection(dbfile):
     """Open a new connection to the SQLite3 database at the given path.
@@ -60,7 +60,7 @@ def _open_db_connection(dbfile):
     except (EnvironmentError, sqlite3.OperationalError, sqlite3.DatabaseError) as e:
         # this indicates that the file is not a compatible database format.
         # Perhaps it was created with an old version, or it might be junk.
-        raise DBError("Unable to create/open db file %s: %s" % (dbfile, e))
+        raise DBError(f"Unable to create/open db file {dbfile}: {e}")
     return db
 
 def _get_temporary_dbfile(dbfile):
@@ -106,20 +106,20 @@ def _get_db(dbfile, name, target_version):
         shutil.copy(dbfile, backup_fn)
 
     while version < target_version:
-        log.msg(" need to upgrade from %s to %s" % (version, target_version))
+        log.msg(f" need to upgrade from {version} to {target_version}")
         try:
             upgrader = get_upgrader(name, version+1)
         except ValueError:
-            log.msg(" unable to upgrade %s to %s" % (version, version+1))
+            log.msg(f" unable to upgrade {version} to {version + 1}")
             raise DBError("Unable to upgrade %s to version %s, left at %s"
                           % (dbfile, version+1, version))
-        log.msg(" executing upgrader v%s->v%s" % (version, version+1))
+        log.msg(f" executing upgrader v{version}->v{version + 1}")
         db.executescript(upgrader)
         db.commit()
         version = version+1
 
     if version != target_version:
-        raise DBError("Unable to handle db version %s" % version)
+        raise DBError(f"Unable to handle db version {version}")
 
     return db
 

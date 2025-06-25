@@ -57,7 +57,7 @@ class Options(usage.Options):
         try:
             value = json.loads(value)
         except:
-            raise usage.UsageError("could not parse JSON value for {}".format(key))
+            raise usage.UsageError(f"could not parse JSON value for {key}")
         self["websocket-protocol-options"].append((key, value))
 
 

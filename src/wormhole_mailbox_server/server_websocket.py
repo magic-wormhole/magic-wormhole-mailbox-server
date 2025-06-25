@@ -113,7 +113,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
     def onConnect(self, request):
         rv = self.factory.server
         if rv.get_log_requests():
-            log.msg("ws client connecting: %s" % (request.peer,))
+            log.msg(f"ws client connecting: {request.peer}")
         self._reactor = self.factory.reactor
 
     def onOpen(self):
