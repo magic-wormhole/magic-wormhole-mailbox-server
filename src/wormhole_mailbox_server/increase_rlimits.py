@@ -19,14 +19,13 @@ def increase_rlimits():
     # soft=hard. Cygwin is reported to return (256,-1) and accepts up to
     # soft=3200. So we try multiple values until something works.
     for newlimit in [hard, 10000, 3200, 1024]:
-        log.msg("changing RLIMIT_NOFILE from (%s,%s) to (%s,%s)" %
-                (soft, hard, newlimit, hard))
+        log.msg(f"changing RLIMIT_NOFILE from ({soft},{hard}) to ({newlimit},{hard})")
         try:
             setrlimit(RLIMIT_NOFILE, (newlimit, hard))
             log.msg("setrlimit successful")
             return
         except ValueError as e:
-            log.msg("error during setrlimit: %s" % e)
+            log.msg(f"error during setrlimit: {e}")
             continue
         except:
             log.msg("other error during setrlimit, leaving it alone")

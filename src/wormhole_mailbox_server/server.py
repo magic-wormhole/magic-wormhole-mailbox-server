@@ -251,8 +251,7 @@ class AppNamespace(object):
                          (self._app_id, name)).fetchone()
         if not row:
             if self._log_requests:
-                log.msg("creating nameplate#%s for app_id %s" %
-                        (name, self._app_id))
+                log.msg(f"creating nameplate#{name} for app_id {self._app_id}")
             mailbox_id = generate_mailbox_id()
             self._add_mailbox(mailbox_id, True, side, when) # ensure row exists
             sql = ("INSERT INTO `nameplates`"
@@ -378,8 +377,7 @@ class AppNamespace(object):
         db = self._db
         if not mailbox_id in self._mailboxes: # ensure Mailbox object exists
             if self._log_requests:
-                log.msg("spawning #%s for app_id %s" % (mailbox_id,
-                                                        self._app_id))
+                log.msg(f"spawning #{mailbox_id} for app_id {self._app_id}")
             self._mailboxes[mailbox_id] = Mailbox(self,
                                                   self._db, self._usage_db,
                                                   self._app_id, mailbox_id)
@@ -468,13 +466,13 @@ class AppNamespace(object):
         # instead of by user action. It does reveal which mailboxes were
         # present when the pruning process began, though, so in the log run
         # it should do less logging.
-        log.msg(" prune begins (%s)" % self._app_id)
+        log.msg(f" prune begins ({self._app_id})")
         db = self._db
         modified = False
 
         for mailbox in self._mailboxes.values():
             if mailbox.has_listeners():
-                log.msg("touch %s because listeners" % mailbox._mailbox_id)
+                log.msg(f"touch {mailbox._mailbox_id} because listeners")
                 mailbox._touch(now)
         db.commit() # make sure the updates are visible below
 
@@ -483,8 +481,7 @@ class AppNamespace(object):
         for row in db.execute("SELECT * FROM `mailboxes` WHERE `app_id`=?",
                               (self._app_id,)).fetchall():
             mailbox_id = row["id"]
-            log.msg("  1: age=%s, old=%s, %s" %
-                    (now - row["updated"], now - old, mailbox_id))
+            log.msg(f"  1: age={now - row['updated']}, old={now - old}, {mailbox_id}")
             if row["updated"] > old:
                 new_mailboxes.add(mailbox_id)
             else:
@@ -539,7 +536,7 @@ class AppNamespace(object):
             if self._usage_db:
                 self._usage_db.commit()
         in_use = bool(self._mailboxes)
-        log.msg("  prune complete, modified=%s, in_use=%s" % (modified, in_use))
+        log.msg(f"  prune complete, modified={modified}, in_use={in_use}")
         return in_use
 
     def count_listeners(self):
@@ -573,7 +570,7 @@ class Server(service.MultiService):
         assert isinstance(app_id, str)
         if not app_id in self._apps:
             if self._log_requests:
-                log.msg("spawning app_id %s" % (app_id,))
+                log.msg(f"spawning app_id {app_id}")
             self._apps[app_id] = AppNamespace(
                 self._db,
                 self._usage_db,
@@ -601,12 +598,12 @@ class Server(service.MultiService):
         # As with AppNamespace.prune_old_mailboxes, we log for now.
         log.msg("beginning app prune")
         for app_id in sorted(self.get_all_apps()):
-            log.msg(" app prune checking %r" % (app_id,))
+            log.msg(f" app prune checking {app_id!r}")
             app = self.get_app(app_id)
             in_use = app.prune(now, old)
             if not in_use:
                 del self._apps[app_id]
-        log.msg("app prune ends, %d apps" % len(self._apps))
+        log.msg(f"app prune ends, {len(self._apps)} apps")
 
     def dump_stats(self, now, rebooted):
         if not self._usage_db:
