@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 # Magic-Wormhole documentation build configuration file, created by
 # sphinx-quickstart on Sun Nov 12 10:24:09 2017.
 #
@@ -51,9 +48,9 @@ source_suffix = ['.rst', '.md']
 master_doc = 'index'
 
 # General information about the project.
-project = u'Magic-Wormhole-Mailbox-Server'
-copyright = u'2018, Brian Warner'
-author = u'Brian Warner'
+project = 'Magic-Wormhole-Mailbox-Server'
+copyright = '2018, Brian Warner'
+author = 'Brian Warner'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -155,8 +152,8 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'Magic-Wormhole-Mailbox-Server.tex', u'Magic-Wormhole-Mailbox-Server Documentation',
-     u'Brian Warner', 'manual'),
+    (master_doc, 'Magic-Wormhole-Mailbox-Server.tex', 'Magic-Wormhole-Mailbox-Server Documentation',
+     'Brian Warner', 'manual'),
 ]
 
 
@@ -165,7 +162,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'magic-wormhole-mailbox-server', u'Magic-Wormhole-Mailbox-Server Documentation',
+    (master_doc, 'magic-wormhole-mailbox-server', 'Magic-Wormhole-Mailbox-Server Documentation',
      [author], 1)
 ]
 
@@ -177,7 +174,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
     (master_doc, 'Magic-Wormhole-Mailbox-Server',
-     u'Magic-Wormhole-Mailbox-Server Documentation',
+     'Magic-Wormhole-Mailbox-Server Documentation',
      author, 'Magic-Wormhole-Mailbox-Server',
      'One line description of project.',
      'Miscellaneous'),

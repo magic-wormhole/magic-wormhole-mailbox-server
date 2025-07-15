@@ -1,4 +1,3 @@
-from __future__ import print_function, unicode_literals
 import io, time
 from unittest import mock
 import treq
@@ -112,7 +111,7 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
 
     def check_welcome(self, data):
         self.failUnlessIn("welcome", data)
-        self.failUnlessEqual(data["welcome"],
+        self.assertEqual(data["welcome"],
                              {"current_cli_version": "advertised.version"})
 
     @inlineCallbacks
@@ -233,7 +232,7 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
             self.assertEqual(type(n), dict)
             self.assertEqual(list(n.keys()), ["id"])
             nids.add(n["id"])
-        self.assertEqual(nids, set([nameplate_id1, "np2"]))
+        self.assertEqual(nids, {nameplate_id1, "np2"})
 
     @inlineCallbacks
     def test_allocate(self):

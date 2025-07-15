@@ -1,4 +1,3 @@
-from __future__ import print_function, unicode_literals
 from unittest import mock
 from twisted.trial import unittest
 from twisted.python import log
@@ -39,14 +38,14 @@ class Server(_Util, ServerBase, unittest.TestCase):
         add()
         self.assertEqual(len(nids), 1000)
         biggest = max(nids)
-        self.assert_(1000 <= biggest < 1000000, biggest)
+        self.assertTrue(1000 <= biggest < 1000000, biggest)
 
     def test_nameplate_allocation_failure(self):
         app = self._server.get_app("appid")
         # pretend to fill all 1M <7-digit nameplates, it should give up
         # eventually
         def _get_nameplate_ids():
-            return set(("%d" % id_int for id_int in range(1, 1000*1000)))
+            return {"%d" % id_int for id_int in range(1, 1000*1000)}
         app._get_nameplate_ids = _get_nameplate_ids
         with self.assertRaises(ValueError) as e:
             app.allocate_nameplate("side1", 0)
@@ -57,8 +56,8 @@ class Server(_Util, ServerBase, unittest.TestCase):
         name = app.allocate_nameplate("side1", 0)
         self.assertEqual(type(name), str)
         nid = int(name)
-        self.assert_(0 < nid < 10, nid)
-        self.assertEqual(app.get_nameplate_ids(), set([name]))
+        self.assertTrue(0 < nid < 10, nid)
+        self.assertEqual(app.get_nameplate_ids(), {name})
         # allocate also does a claim
         np_row, side_rows = self._nameplate(app, name)
         self.assertEqual(len(side_rows), 1)
@@ -338,11 +337,11 @@ class Prune(unittest.TestCase):
 
         rv.prune_all_apps(now=123, old=50)
 
-        nameplates = set([row["name"] for row in
-                          db.execute("SELECT * FROM `nameplates`").fetchall()])
+        nameplates = {row["name"] for row in
+                          db.execute("SELECT * FROM `nameplates`").fetchall()}
         self.assertEqual(new_nameplates, nameplates)
-        mailboxes = set([row["id"] for row in
-                         db.execute("SELECT * FROM `mailboxes`").fetchall()])
+        mailboxes = {row["id"] for row in
+                         db.execute("SELECT * FROM `mailboxes`").fetchall()}
         self.assertEqual(len(new_nameplates), len(mailboxes))
 
     def test_mailboxes(self):
@@ -372,8 +371,8 @@ class Prune(unittest.TestCase):
 
         rv.prune_all_apps(now=123, old=50)
 
-        mailboxes = set([row["id"] for row in
-                         db.execute("SELECT * FROM `mailboxes`").fetchall()])
+        mailboxes = {row["id"] for row in
+                         db.execute("SELECT * FROM `mailboxes`").fetchall()}
         self.assertEqual(new_mailboxes, mailboxes)
 
     def test_lots(self):
@@ -425,18 +424,18 @@ class Prune(unittest.TestCase):
 
         rv.prune_all_apps(now=123, old=50)
 
-        nameplates = set([row["name"] for row in
-                          db.execute("SELECT * FROM `nameplates`").fetchall()])
+        nameplates = {row["name"] for row in
+                          db.execute("SELECT * FROM `nameplates`").fetchall()}
         self.assertEqual(nameplate_survives, bool(nameplates),
                          ("nameplate", nameplate_survives, nameplates, desc))
 
-        mailboxes = set([row["id"] for row in
-                         db.execute("SELECT * FROM `mailboxes`").fetchall()])
+        mailboxes = {row["id"] for row in
+                         db.execute("SELECT * FROM `mailboxes`").fetchall()}
         self.assertEqual(mailbox_survives, bool(mailboxes),
                          ("mailbox", mailbox_survives, mailboxes, desc))
 
-        messages = set([row["msg_id"] for row in
-                          db.execute("SELECT * FROM `messages`").fetchall()])
+        messages = {row["msg_id"] for row in
+                          db.execute("SELECT * FROM `messages`").fetchall()}
         self.assertEqual(messages_survive, bool(messages),
                          ("messages", messages_survive, messages, desc))
 
@@ -512,7 +511,7 @@ class Summary(unittest.TestCase):
         db = create_channel_db(":memory:")
         a = AppNamespace(db, None, None, False, "some_app_id", True)
         np = a.allocate_nameplate("side1", "321")
-        self.assertEqual(set([np]), a.get_nameplate_ids())
+        self.assertEqual({np}, a.get_nameplate_ids())
 
     def test_blur(self):
         db = create_channel_db(":memory:")

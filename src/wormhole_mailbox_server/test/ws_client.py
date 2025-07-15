@@ -1,4 +1,3 @@
-from __future__ import print_function, unicode_literals
 import json, itertools
 from twisted.internet import defer
 from twisted.internet.defer import inlineCallbacks

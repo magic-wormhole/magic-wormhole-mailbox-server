@@ -7,10 +7,10 @@ def to_bytes(u):
 def bytes_to_hexstr(b):
     assert isinstance(b, bytes)
     hexstr = hexlify(b).decode("ascii")
-    assert isinstance(hexstr, type(u""))
+    assert isinstance(hexstr, str)
     return hexstr
 def hexstr_to_bytes(hexstr):
-    assert isinstance(hexstr, type(u""))
+    assert isinstance(hexstr, str)
     b = unhexlify(hexstr.encode("ascii"))
     assert isinstance(b, bytes)
     return b

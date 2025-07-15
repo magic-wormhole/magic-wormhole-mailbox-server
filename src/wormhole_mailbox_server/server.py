@@ -1,4 +1,3 @@
-from __future__ import print_function, unicode_literals
 import os, random, base64
 from collections import namedtuple
 from twisted.python import log
@@ -175,7 +174,7 @@ class Mailbox:
         self._listeners = {}
 
 
-class AppNamespace(object):
+class AppNamespace:
 
     def __init__(self, db, usage_db, blur_usage, log_requests, app_id,
                  allow_list):
@@ -211,7 +210,7 @@ class AppNamespace(object):
         # TODO: filter this to numeric ids?
         c = db.execute("SELECT DISTINCT `name` FROM `nameplates`"
                        " WHERE `app_id`=?", (self._app_id,))
-        return set([row["name"] for row in c.fetchall()])
+        return {row["name"] for row in c.fetchall()}
 
     def _find_available_nameplate_id(self):
         claimed = self._get_nameplate_ids()

@@ -33,7 +33,7 @@ class Options(usage.Options):
         ]
 
     def __init__(self):
-        super(Options, self).__init__()
+        super().__init__()
         self["websocket-protocol-options"] = []
         self["allow-list"] = True
 

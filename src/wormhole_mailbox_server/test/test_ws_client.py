@@ -1,4 +1,3 @@
-from __future__ import print_function, unicode_literals
 import json
 from twisted.trial import unittest
 from twisted.internet.defer import inlineCallbacks

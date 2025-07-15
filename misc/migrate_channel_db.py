@@ -24,7 +24,6 @@ Note that an idle server will have no channel data, so you could instead just
 wait for the server to be empty (sqlite3 relay.sqlite message |grep INSERT).
 """
 
-from __future__ import unicode_literals, print_function
 import sys
 from wormhole_mailbox_server.database import (open_existing_db,
                                               create_channel_db)
