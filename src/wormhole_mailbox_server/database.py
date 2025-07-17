@@ -1,25 +1,26 @@
+import importlib.resources
 import os, shutil
 import sqlite3
 import tempfile
-from pkg_resources import resource_string
+
 from twisted.python import log
 
 class DBError(Exception):
     pass
 
 def get_schema(name, version):
-    schema_bytes = resource_string("wormhole_mailbox_server",
-                                   "db-schemas/%s-v%d.sql" % (name, version))
-    return schema_bytes.decode("utf-8")
+    sql_filepath = f"db-schemas/{name}-v{version}.sql"
+    path = importlib.resources.files("wormhole_mailbox_server").joinpath(sql_filepath)
+    return path.read_text(encoding="utf-8")
 
 def get_upgrader(name, new_version):
+    sql_filepath = f"db-schemas/upgrade-{name}-to-v{new_version}.sql"
+    path = importlib.resources.files("wormhole_mailbox_server").joinpath(sql_filepath)
     try:
-        schema_bytes = resource_string("wormhole_mailbox_server",
-                                       "db-schemas/upgrade-%s-to-v%d.sql" %
-                                       (name, new_version))
-    except OSError: # includes FileNotFoundError on py3
+        return path.read_text(encoding="utf-8")
+    except OSError: # includes FileNotFoundError
         raise ValueError("no upgrader for %d" % new_version)
-    return schema_bytes.decode("utf-8")
+
 
 CHANNELDB_TARGET_VERSION = 1
 USAGEDB_TARGET_VERSION = 2
