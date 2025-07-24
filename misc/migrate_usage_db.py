@@ -19,7 +19,6 @@ The resuting "usage.sqlite" should be passed into --usage-db=, e.g. "twist
 wormhole-mailbox --usage-db=.../PATH/TO/usage.sqlite".
 """
 
-from __future__ import unicode_literals, print_function
 import sys
 from wormhole_mailbox_server.database import open_existing_db, create_usage_db
 

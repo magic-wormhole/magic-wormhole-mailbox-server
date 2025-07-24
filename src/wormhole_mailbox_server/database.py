@@ -1,4 +1,3 @@
-from __future__ import unicode_literals
 import os, shutil
 import sqlite3
 import tempfile
@@ -18,7 +17,7 @@ def get_upgrader(name, new_version):
         schema_bytes = resource_string("wormhole_mailbox_server",
                                        "db-schemas/upgrade-%s-to-v%d.sql" %
                                        (name, new_version))
-    except EnvironmentError: # includes FileNotFoundError on py3
+    except OSError: # includes FileNotFoundError on py3
         raise ValueError("no upgrader for %d" % new_version)
     return schema_bytes.decode("utf-8")
 
@@ -57,7 +56,7 @@ def _open_db_connection(dbfile):
     try:
         db = sqlite3.connect(dbfile)
         _initialize_db_connection(db)
-    except (EnvironmentError, sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+    except (OSError, sqlite3.OperationalError, sqlite3.DatabaseError) as e:
         # this indicates that the file is not a compatible database format.
         # Perhaps it was created with an old version, or it might be junk.
         raise DBError(f"Unable to create/open db file {dbfile}: {e}")

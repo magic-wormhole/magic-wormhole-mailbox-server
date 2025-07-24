@@ -1,4 +1,3 @@
-from __future__ import unicode_literals, print_function
 from twisted.trial import unittest
 from unittest import mock
 from twisted.application.service import MultiService

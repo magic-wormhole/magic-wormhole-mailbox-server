@@ -1,4 +1,3 @@
-from __future__ import unicode_literals
 import time
 from twisted.internet import reactor
 from twisted.python import log
