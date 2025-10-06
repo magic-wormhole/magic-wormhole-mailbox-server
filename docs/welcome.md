@@ -7,7 +7,7 @@ This repository holds the code for the main server that
 [Magic-Wormhole](http://magic-wormhole.io) clients connect to. The server
 performs store-and-forward delivery for small key-exchange and control
 messages. Bulk data is sent over a direct TCP connection, or through a
-[transit-relay](https://github.com/warner/magit-wormhole-transit-relay).
+[transit-relay](https://github.com/warner/magic-wormhole-transit-relay).
 
 Clients connect with WebSockets, for low-latency delivery in the happy case
 where both clients are attached at the same time. Message are stored in to
