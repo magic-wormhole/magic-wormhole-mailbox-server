@@ -1,5 +1,4 @@
 import os, random, base64, re
-import hashlib
 from collections import namedtuple
 from twisted.python import log
 from twisted.application import service
