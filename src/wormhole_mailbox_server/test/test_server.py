@@ -7,8 +7,9 @@ from twisted.trial import unittest
 from twisted.python import log
 from twisted.internet.defer import inlineCallbacks, Deferred
 from twisted.internet.address import IPv4Address
+from twisted.internet.testing import MemoryReactorClock
 import autobahn
-from autobahn.twisted.testing import create_pumper, create_memory_agent, MemoryReactorClockResolver
+from autobahn.twisted.testing import create_pumper, create_memory_agent
 from autobahn.twisted.websocket import WebSocketClientProtocol
 from .common import ServerBase, _Util
 from ..server import (make_server, Usage,
@@ -704,7 +705,7 @@ class PermissionsServer(unittest.TestCase):
 
         Note: this needs the command-line tool "hashcash" to run.
         """
-        reactor = MemoryReactorClockResolver()
+        reactor = MemoryReactorClock()
         pump = create_pumper()
         self.addCleanup(pump.stop)
 
