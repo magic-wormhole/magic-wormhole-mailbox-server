@@ -2,7 +2,7 @@ import time
 from twisted.internet import reactor
 from twisted.python import log
 from autobahn.twisted import websocket
-from .server import CrowdedError, ReclaimedError, SidedMessage, NoPermission, check_valid_nameplate
+from .server import CrowdedError, ReclaimedError, SidedMessage, check_valid_nameplate
 from .permission import NoPermission
 from .util import dict_to_bytes, bytes_to_dict
 

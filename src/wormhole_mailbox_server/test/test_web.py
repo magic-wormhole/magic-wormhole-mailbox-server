@@ -764,7 +764,7 @@ class Permissions(ServerBase, unittest.TestCase):
         reactor.connectTCP("127.0.0.1", self.rdv_ws_port, f)
         c = yield f.d
         self._clients.append(c)
-        returnValue(c)
+        return c
 
     @inlineCallbacks
     def test_hashcash(self):

@@ -1,7 +1,6 @@
 from unittest import mock
 from unittest import SkipTest
 import subprocess
-import mock
 import packaging.version
 
 from twisted.trial import unittest
