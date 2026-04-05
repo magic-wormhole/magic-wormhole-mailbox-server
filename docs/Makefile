@@ -17,6 +17,7 @@ help:
 diagrams:
 	plantuml -Tpng happy-plant.seq
 	seqdiag --no-transparency --antialias -T png happy.seq
+	seqdiag --no-transparency --antialias -T png close-phase.seq
 	dot -Tpng states.dot > states.png
 
 # Catch-all target: route all unknown targets to Sphinx using the new
