@@ -20,7 +20,7 @@ jobs:
       run: sudo apt install hashcash
 
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
 
