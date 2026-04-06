@@ -115,6 +115,7 @@ class Mailbox:
                          " VALUES (?,?,?,?,?, ?,?)",
                          (self._app_id, self._mailbox_id, sm.side,
                           sm.phase, sm.body, sm.server_rx, sm.msg_id))
+        # XXX other uses of _touch() seem to use a timestamp, what is server_rx exactly?
         self._touch(sm.server_rx)
         self._db.commit()
 
