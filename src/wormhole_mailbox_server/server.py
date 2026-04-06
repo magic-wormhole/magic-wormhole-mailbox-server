@@ -124,6 +124,10 @@ class Mailbox:
         self._add_message(sm)
         self.broadcast_message(sm)
 
+    def remove_message(self, their_phase, their_side):
+        self._db.execute("DELETE FROM `messages`"
+                         " WHERE `side`=? AND `phase`=?", (their_side, their_phase))
+
     def close(self, side, mood, when):
         assert isinstance(side, str), type(side)
         db = self._db

@@ -148,6 +148,8 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
                 return self.handle_open(msg, server_rx)
             if mtype == "add":
                 return self.handle_add(msg, server_rx)
+            if mtype == "message-ack":
+                return self.handle_message_ack(msg, server_rx)
             if mtype == "close":
                 return self.handle_close(msg, server_rx)
 
@@ -261,6 +263,33 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
                           body=msg["body"], server_rx=server_rx,
                           msg_id=msg_id)
         self._mailbox.add_message(sm)
+
+    def handle_message_ack(self, msg, server_rx):
+        """
+        When a client has (durably) processed a message, it may alert the
+        server to this fact via a MESSAGE-ACK. This then allows the server
+        to reclaim space by deleting the message.
+        """
+        # the server could still send the "deleted" message, right? (I
+        # don't have a message-ordering in mind just intuition) .. if
+        # so we should alert in the above docstring.
+        if not self._mailbox:
+            raise Error("must open mailbox before message-ack'ing")
+        for req in ("their-phase", "their-side"):
+            if req not in msg:
+                raise Error("message-ack missing '{}'}".format(req))
+        # todo: check that "their-side" is different from our side?
+        # (warner and meejah discussed this apr 1 but didn't come to a
+        # concrete conclusion). options are:
+        # - allow it
+        # - error if you try
+        # - ignore if you try (log it though)
+
+        # this enables the "silent ignore" version of above
+        if msg["their-side"] == self._side:
+            log.msg("Ignoring delete from same-side client for phase '{}'".format(msg["their-phase"]))
+        else:
+            self._mailbox.remove_message(msg["their-phase"], msg["their-side"])
 
     def handle_close(self, msg, server_rx):
         if self._did_close:
