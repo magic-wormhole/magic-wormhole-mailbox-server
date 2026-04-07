@@ -367,13 +367,25 @@ class MailboxDeletes(RuleBasedStateMachine):
 
     @initialize()
     def init_messages(self):
-        print("INIT")
+        ##print("INIT")
+        # need to clear database, so Hypothesis can't find "old" test
+        # stuff?
+
+        # hack: we want a "fresh everything" on each exploration of
+        # the mailbox space .. perhaps should just call .setUp() from
+        # ServerBase again? Better yet: factor out the "create a test
+        # server" to a function and call that here.
+        self.server._apps = {}
+        self.server._db = create_channel_db(":memory:")
         self.have_phases = []
-        # todo: can we "hypothesis" the setup too, to get different
+        # todo: should we "hypothesis" the setup too, to get different
         # values for these?
         self.app = self.server.get_app("appid")
         # wtf? we're calling close() .. not getting exceptions .. but no free_mailbox?
         self.mbox = self.app.open_mailbox("mbox", "side1", 0)
+        ##print("INNIT", self.mbox, self.mbox.get_messages())
+        # double-checking our assumptions
+        assert self.mbox.get_messages() == [], "should be empty on init"
 
     @rule(
         target=messages,
@@ -387,7 +399,7 @@ class MailboxDeletes(RuleBasedStateMachine):
 
     @rule(msg=messages)
     def received(self, msg):
-        print("ADD {}".format(repr(msg.phase)))
+        ##print("ADD {}".format(repr(msg.phase)))
         self.have_phases.append(msg.phase)
         self.mbox.add_message(msg)
 
@@ -397,7 +409,7 @@ class MailboxDeletes(RuleBasedStateMachine):
         phase=st.text(min_size=1),
     )
     def delete(self, phase):
-        print("REMOVE {}".format(repr(phase)))
+        ##print("REMOVE {}".format(repr(phase)))
         try:
             self.have_phases.remove(phase)
         except ValueError:
@@ -407,7 +419,7 @@ class MailboxDeletes(RuleBasedStateMachine):
 
     @rule(msg=messages)
     def retained_agree(self, msg):
-        print("agree?")
+        ##print("agree?", end='')
         mbox_phases = [
             m.phase
             for m in self.mbox.get_messages()
@@ -417,35 +429,37 @@ class MailboxDeletes(RuleBasedStateMachine):
         if msg.phase in self.have_phases:
             if msg.phase not in mbox_phases:
                 print("message should exist")
-            ##assert msg.phase in mbox_phases, "message should exist"
+            assert msg.phase in mbox_phases, "message should exist"
         else:
             if msg.phase in mbox_phases:
                 print("message should not exist")
                 print(repr(msg.phase))
                 for p in mbox_phases:
                     print("  ", repr(p))
-            ##assert msg.phase not in mbox_phases, "message should not exist"
+            assert msg.phase not in mbox_phases, "message should not exist"
 
     def teardown(self):
-        print("teardown", self.mbox)
+        ##print("teardown", self.mbox)
         if self.mbox is not None:
-            try:
-                self.mbox.close(self.side, "happy", 1234)
-            except Exception as e:
-                print("ASDFASDF", e)
+            self.mbox.close(self.side, "happy", 1234)
             self.mbox._shutdown();
             del self.mbox
-        else:
-            print("DINNY HAVE UN")
         self.app.free_mailbox("mbox")
 
 
 class TestDelete(_Util, ServerBase, unittest.TestCase):
+    """
+    A container that looks like the other tests to hold a Hypothesis
+    state-based testing instance.
+
+    (Hypothesis can mimic the normal stdlib TestCase but we're using
+    Twisted's immitation of that here...)
+    """
 
     def create(self):
         return MailboxDeletes(self._server)
 
-    def test_foo(self):
+    def test_state_based_mailbox_messages(self):
         run_state_machine_as_test(self.create)
 
     

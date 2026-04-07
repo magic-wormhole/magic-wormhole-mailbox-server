@@ -270,9 +270,9 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         server to this fact via a MESSAGE-ACK. This then allows the server
         to reclaim space by deleting the message.
         """
-        # the server could still send the "deleted" message, right? (I
-        # don't have a message-ordering in mind just intuition) .. if
-        # so we should alert in the above docstring.
+        # the server could still send the "deleted" message later,
+        # right? (I don't have a message-ordering in mind just
+        # intuition) .. if so we should alert in the above docstring.
         if not self._mailbox:
             raise Error("must open mailbox before message-ack'ing")
         for req in ("their-phase", "their-side"):
