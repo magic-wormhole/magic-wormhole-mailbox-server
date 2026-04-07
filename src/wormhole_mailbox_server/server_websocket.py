@@ -148,8 +148,8 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
                 return self.handle_open(msg, server_rx)
             if mtype == "add":
                 return self.handle_add(msg, server_rx)
-            if mtype == "message-ack":
-                return self.handle_message_ack(msg, server_rx)
+            if mtype == "delete":
+                return self.handle_delete(msg, server_rx)
             if mtype == "close":
                 return self.handle_close(msg, server_rx)
 
@@ -264,20 +264,20 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
                           msg_id=msg_id)
         self._mailbox.add_message(sm)
 
-    def handle_message_ack(self, msg, server_rx):
+    def handle_delete(self, msg, server_rx):
         """
         When a client has (durably) processed a message, it may alert the
-        server to this fact via a MESSAGE-ACK. This then allows the server
+        server to this fact via a DELETE. This then allows the server
         to reclaim space by deleting the message.
         """
         # the server could still send the "deleted" message later,
         # right? (I don't have a message-ordering in mind just
         # intuition) .. if so we should alert in the above docstring.
         if not self._mailbox:
-            raise Error("must open mailbox before message-ack'ing")
+            raise Error("must open mailbox before DELETE-ing")
         for req in ("their-phase", "their-side"):
             if req not in msg:
-                raise Error("message-ack missing '{}'}".format(req))
+                raise Error("delete missing arg '{}'}".format(req))
         # todo: check that "their-side" is different from our side?
         # (warner and meejah discussed this apr 1 but didn't come to a
         # concrete conclusion). options are:

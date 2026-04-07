@@ -287,7 +287,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
 
 class Delete(_Util, ServerBase, unittest.TestCase):
     """
-    When clients send `message-ack` the server may delete those messages.
+    When clients send `delete` the server may delete those messages.
 
     - clients should only delete _other_ clients' messages
     - (is / should it be an error if they try to delete their own?)
