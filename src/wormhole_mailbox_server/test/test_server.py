@@ -6,9 +6,10 @@ from ..server import (make_server, Usage,
                       SidedMessage, CrowdedError, AppNamespace)
 from ..database import create_channel_db, create_usage_db
 
-from hypothesis import given, assume, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
-from hypothesis.stateful import run_state_machine_as_test
+from hypothesis.stateful import (Bundle, RuleBasedStateMachine, rule, initialize,
+                                 run_state_machine_as_test)
 
 npid = "1"
 
@@ -339,14 +340,6 @@ class Delete(_Util, ServerBase, unittest.TestCase):
         finally:
             m.close(side0, "moody", 987)
             #app.free_mailbox(mbox)
-
-
-import hypothesis.strategies as st
-from hypothesis.database import DirectoryBasedExampleDatabase
-from hypothesis.stateful import Bundle, RuleBasedStateMachine, rule, initialize
-import tempfile
-from collections import defaultdict
-import shutil
 
 
 class MailboxDeletes(RuleBasedStateMachine):

@@ -277,7 +277,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
             raise Error("must open mailbox before DELETE-ing")
         for req in ("their-phase", "their-side"):
             if req not in msg:
-                raise Error("delete missing arg '{}'}".format(req))
+                raise Error("delete is missing argument '{}'".format(req))
         # todo: check that "their-side" is different from our side?
         # (warner and meejah discussed this apr 1 but didn't come to a
         # concrete conclusion). options are:
