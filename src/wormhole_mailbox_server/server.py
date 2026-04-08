@@ -127,6 +127,7 @@ class Mailbox:
     def remove_message(self, their_phase, their_side):
         self._db.execute("DELETE FROM `messages`"
                          " WHERE `side`=? AND `phase`=?", (their_side, their_phase))
+        self._db.commit()
 
     def close(self, side, mood, when):
         assert isinstance(side, str), type(side)
