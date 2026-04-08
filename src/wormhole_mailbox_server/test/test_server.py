@@ -308,6 +308,10 @@ class Delete(_Util, ServerBase, unittest.TestCase):
         assert len(m.get_messages()) == 1, "expected single message"
 
         m.remove_message("pake", "side1")
+        # make sure it didn't forget to commit() ..
+        # get_messages() does an .execute() which would correctly
+        # commit any active transaction
+        self._server._db.rollback()
         assert m.get_messages() == [], "expected no messages"
 
     @settings(
@@ -324,9 +328,6 @@ class Delete(_Util, ServerBase, unittest.TestCase):
         app = self._server.get_app("appid")
         m = app.open_mailbox(mbox, side0, 0)
         try:
-            # would be good to "interleave" some message_ack()s
-            # randomly during add_message() .. nice Hypothesis way to
-            # do that?
             for phase in phases:
                 sm = SidedMessage(side0, phase, body, 42, msg_id)
                 m.add_message(sm)
@@ -339,7 +340,6 @@ class Delete(_Util, ServerBase, unittest.TestCase):
             
         finally:
             m.close(side0, "moody", 987)
-            #app.free_mailbox(mbox)
 
 
 class MailboxDeletes(RuleBasedStateMachine):
@@ -359,11 +359,8 @@ class MailboxDeletes(RuleBasedStateMachine):
     messages = Bundle("messages")
 
     @initialize()
-    def init_messages(self):
-        ##print("INIT")
-        # need to clear database, so Hypothesis can't find "old" test
-        # stuff?
-
+    def connect(self):
+        ##print()
         # hack: we want a "fresh everything" on each exploration of
         # the mailbox space .. perhaps should just call .setUp() from
         # ServerBase again? Better yet: factor out the "create a test
@@ -374,9 +371,7 @@ class MailboxDeletes(RuleBasedStateMachine):
         # todo: should we "hypothesis" the setup too, to get different
         # values for these?
         self.app = self.server.get_app("appid")
-        # wtf? we're calling close() .. not getting exceptions .. but no free_mailbox?
         self.mbox = self.app.open_mailbox("mbox", "side1", 0)
-        ##print("INNIT", self.mbox, self.mbox.get_messages())
         # double-checking our assumptions
         assert self.mbox.get_messages() == [], "should be empty on init"
 
@@ -409,10 +404,15 @@ class MailboxDeletes(RuleBasedStateMachine):
             # client deleted this, but we don't have that message
             pass
         self.mbox.remove_message(phase, self.side)
+        self.server._db.rollback()
 
-    @rule(msg=messages)
-    def retained_agree(self, msg):
-        ##print("agree?", end='')
+    @rule(msg=messages, rollback=st.sampled_from([True, False]))
+    def retained_agree(self, msg, rollback):
+        if rollback:
+            # if an operation forgot to do .commit() on the database,
+            # this will catch them by removing that transaction
+            self.server._db.rollback()
+
         mbox_phases = [
             m.phase
             for m in self.mbox.get_messages()
@@ -440,7 +440,7 @@ class MailboxDeletes(RuleBasedStateMachine):
         self.app.free_mailbox("mbox")
 
 
-class TestDelete(_Util, ServerBase, unittest.TestCase):
+class TestMailboxDeletes(_Util, ServerBase, unittest.TestCase):
     """
     A container that looks like the other tests to hold a Hypothesis
     state-based testing instance.
@@ -453,9 +453,15 @@ class TestDelete(_Util, ServerBase, unittest.TestCase):
         return MailboxDeletes(self._server)
 
     def test_state_based_mailbox_messages(self):
-        run_state_machine_as_test(self.create)
+        run_state_machine_as_test(
+            self.create,
+            settings=settings(
+                max_examples=200,
+                stateful_step_count=13,
+            )
+        )
 
-    
+
 class Prune(unittest.TestCase):
 
     def _get_mailbox_updated(self, app, mbox_id):
