@@ -1,6 +1,9 @@
 from twisted.trial import unittest
 from unittest import mock
 from twisted.application.service import MultiService
+from ..permission import (
+    NoPermission,
+)
 from .. import server_tap
 
 class Service(unittest.TestCase):
@@ -23,6 +26,7 @@ class Service(unittest.TestCase):
                                                    signal_error=None,
                                                    welcome_motd=None,
                                                    blur_usage=None,
+                                                   permission_providers=[NoPermission],
                                                    usage_db=udb,
                                                    log_file=None)])
         self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
@@ -50,5 +54,6 @@ class Service(unittest.TestCase):
                                                    signal_error=None,
                                                    welcome_motd=None,
                                                    blur_usage=None,
+                                                   permission_providers=[NoPermission],
                                                    usage_db=udb,
                                                    log_file=fd)])

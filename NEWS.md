@@ -5,6 +5,7 @@ User-visible changes in "magic-wormhole-mailbox-server":
 
 * (put release-notes here when merging / proposing a PR)
 * CI no longer tests Python 3.9 (it is EOL)
+* add "permissions" implementation, with hashcash (a DoS mitigation)
 
 
 ## Release 0.6.0 (13-Feb-2026)
