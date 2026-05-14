@@ -291,8 +291,7 @@ class Delete(_Util, ServerBase, unittest.TestCase):
     When clients send `delete` the server may delete those messages.
 
     - clients should only delete _other_ clients' messages
-    - (is / should it be an error if they try to delete their own?)
-    - can we use Hypothesis in this test-suite?
+      - (currently this is silently ignored .. should be error?)
     """
 
     def test_one_message(self):
@@ -337,7 +336,7 @@ class Delete(_Util, ServerBase, unittest.TestCase):
             for phase in phases:
                 m.remove_message(phase, side0)
             assert m.get_messages() == [], "all messages should be deleted"
-            
+
         finally:
             m.close(side0, "moody", 987)
 
