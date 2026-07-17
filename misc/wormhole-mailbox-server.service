@@ -1,0 +1,23 @@
+# This is a sample systemd "unit" file to start a mailbox server. This
+# is somewhat specialized for an environment in which a dedicated
+# "wormhole" user owns the server, and the code is installed into a
+# virtualenv within that user's home directory. Use this as
+# inspiration, but if you're running a server, you'll probably want a
+# different approach.
+
+[Unit]
+Description=Magic-Wormhole Mailbox Server
+After=network.target
+
+[Service]
+Type=simple
+User=wormhole
+Group=wormhole
+WorkingDirectory=/home/wormhole/wormhole
+Environment=PATH=/home/wormhole/.local/bin:/usr/bin:/bin
+ExecStart=/home/wormhole/wormhole/ve3/bin/twist --log-file=/home/wormhole/wormhole/mailbox.log --log-format=text wormhole-mailbox --blur-usage=3600 --usage-db=usage.sqlite
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
