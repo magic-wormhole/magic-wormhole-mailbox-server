@@ -24,3 +24,8 @@ def bytes_to_dict(b):
     d = json.loads(b.decode("utf-8"))
     assert isinstance(d, dict)
     return d
+
+def str_or_none(data):
+    if data is None:
+        return data
+    return str(data)

@@ -2,6 +2,8 @@ import os, random, base64, re
 from collections import namedtuple
 from twisted.python import log
 from twisted.application import service
+from .address_id import AddressIDTracker
+from .connections import ConnectionTable
 
 def generate_mailbox_id():
     return base64.b32encode(os.urandom(8)).lower().strip(b"=").decode("ascii")
@@ -560,7 +562,7 @@ class AppNamespace:
 
 class Server(service.MultiService):
     def __init__(self, db, allow_list, welcome,
-                 blur_usage, usage_db=None):
+                 blur_usage, usage_db=None, addrid_db=None):
         service.MultiService.__init__(self)
         self._db = db
         self._allow_list = allow_list
@@ -568,12 +570,23 @@ class Server(service.MultiService):
         self._blur_usage = blur_usage
         self._log_requests = blur_usage is None
         self._usage_db = usage_db
+
+        self._addrid_tracker = AddressIDTracker(self._db, addrid_db) if addrid_db else None
+        self._connection_table = ConnectionTable(self._db)
         self._apps = {}
 
     def get_welcome(self):
         return self._welcome
     def get_log_requests(self):
         return self._log_requests
+    def get_address_id(self, peer_type, peer_host):
+        if self._addrid_tracker:
+            return self._addrid_tracker.get_id(peer_type, peer_host)
+        return None
+
+    def connection_established(self, address_id, now):
+        c = self._connection_table.established(address_id, now)
+        return c
 
     def get_app(self, app_id):
         assert isinstance(app_id, str)
@@ -613,6 +626,14 @@ class Server(service.MultiService):
             if not in_use:
                 del self._apps[app_id]
         log.msg(f"app prune ends, {len(self._apps)} apps")
+
+
+    def check_addrid_generation(self, now, generation_duration, force=False):
+        if self._addrid_tracker:
+            self._addrid_tracker.check_generation(now, generation_duration, force)
+
+    def clear_connections(self):
+        self._connection_table.clear()
 
     def dump_stats(self, now, rebooted):
         if not self._usage_db:
@@ -688,6 +709,7 @@ def make_server(db, allow_list=True,
                 blur_usage=None,
                 usage_db=None,
                 welcome_motd=None,
+                addrid_db=None,
                 ):
     if blur_usage:
         log.msg("blurring access times to %d seconds" % blur_usage)
@@ -711,4 +733,4 @@ def make_server(db, allow_list=True,
         welcome["error"] = signal_error
 
     return Server(db, allow_list=allow_list, welcome=welcome,
-                  blur_usage=blur_usage, usage_db=usage_db)
+                  blur_usage=blur_usage, usage_db=usage_db, addrid_db=addrid_db)

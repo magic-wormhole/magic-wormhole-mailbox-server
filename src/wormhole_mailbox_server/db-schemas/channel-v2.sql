@@ -1,0 +1,95 @@
+
+-- note: anything which isn't an boolean, integer, or human-readable unicode
+-- string, (i.e. binary strings) will be stored as hex
+
+CREATE TABLE `version`
+(
+ `version` INTEGER -- contains one row, set to 2
+);
+
+
+-- Wormhole codes use a "nameplate": a short name which is only used to
+-- reference a specific (long-named) mailbox. The codes only use numeric
+-- nameplates, but the protocol and server allow can use arbitrary strings.
+CREATE TABLE `nameplates`
+(
+ `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+ `app_id` VARCHAR,
+ `name` VARCHAR,
+ `mailbox_id` VARCHAR REFERENCES `mailboxes`(`id`),
+ `request_id` VARCHAR -- from 'allocate' message, for future deduplication
+);
+CREATE INDEX `nameplates_idx` ON `nameplates` (`app_id`, `name`);
+CREATE INDEX `nameplates_mailbox_idx` ON `nameplates` (`app_id`, `mailbox_id`);
+CREATE INDEX `nameplates_request_idx` ON `nameplates` (`app_id`, `request_id`);
+
+CREATE TABLE `nameplate_sides`
+(
+ `nameplates_id` REFERENCES `nameplates`(`id`),
+ `claimed` BOOLEAN, -- True after claim(), False after release()
+ `side` VARCHAR,
+ `added` INTEGER -- time when this side first claimed the nameplate
+);
+
+
+-- Clients exchange messages through a "mailbox", which has a long (randomly
+-- unique) identifier and a queue of messages.
+-- `id` is randomly-generated and unique across all apps.
+CREATE TABLE `mailboxes`
+(
+ `app_id` VARCHAR,
+ `id` VARCHAR PRIMARY KEY,
+ `updated` INTEGER, -- time of last activity, used for pruning
+ `for_nameplate` BOOLEAN -- allocated for a nameplate, not standalone
+);
+CREATE INDEX `mailboxes_idx` ON `mailboxes` (`app_id`, `id`);
+
+CREATE TABLE `mailbox_sides`
+(
+ `mailbox_id` REFERENCES `mailboxes`(`id`),
+ `opened` BOOLEAN, -- True after open(), False after close()
+ `side` VARCHAR,
+ `added` INTEGER, -- time when this side first opened the mailbox
+ `mood` VARCHAR
+);
+
+CREATE TABLE `messages`
+(
+ `app_id` VARCHAR,
+ `mailbox_id` VARCHAR,
+ `side` VARCHAR,
+ `phase` VARCHAR, -- numeric or string
+ `body` VARCHAR,
+ `server_rx` INTEGER,
+ `msg_id` VARCHAR
+);
+CREATE INDEX `messages_idx` ON `messages` (`app_id`, `mailbox_id`);
+
+-- address ID generations: actual addresses are in a separate DB
+
+CREATE TABLE `addrid_generation` -- one row
+(
+ `generation` INTEGER, -- current generation ID, increments from one
+ `started` INTEGER -- time when this generation started
+);
+
+-- current connections
+
+CREATE TABLE `connections`
+(
+ `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+ `addrid_generation` INTEGER,
+ `addrid_counter` INTEGER,
+ `connected` INTEGER, -- seconds since epoch: websocket establishment
+ `side` VARCHAR,
+ `implementation` VARCHAR,
+ `version` VARCHAR,
+ `active` INTEGER -- second since epoch: last command received
+);
+
+CREATE TABLE `connection_messages`
+(
+ `id` REFERENCES `connections`(`id`),
+ `when` INTEGER,
+ `name` VARCHAR
+);
