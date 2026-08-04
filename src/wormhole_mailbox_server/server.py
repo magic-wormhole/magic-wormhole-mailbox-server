@@ -560,7 +560,7 @@ class AppNamespace:
 
 class Server(service.MultiService):
     def __init__(self, db, allow_list, welcome,
-                 blur_usage, usage_db=None, log_file=None):
+                 blur_usage, usage_db=None):
         service.MultiService.__init__(self)
         self._db = db
         self._allow_list = allow_list
@@ -568,7 +568,6 @@ class Server(service.MultiService):
         self._blur_usage = blur_usage
         self._log_requests = blur_usage is None
         self._usage_db = usage_db
-        self._log_file = log_file
         self._apps = {}
 
     def get_welcome(self):
@@ -688,7 +687,6 @@ def make_server(db, allow_list=True,
                 signal_error=None,
                 blur_usage=None,
                 usage_db=None,
-                log_file=None,
                 welcome_motd=None,
                 ):
     if blur_usage:
@@ -713,4 +711,4 @@ def make_server(db, allow_list=True,
         welcome["error"] = signal_error
 
     return Server(db, allow_list=allow_list, welcome=welcome,
-                  blur_usage=blur_usage, usage_db=usage_db, log_file=log_file)
+                  blur_usage=blur_usage, usage_db=usage_db)
