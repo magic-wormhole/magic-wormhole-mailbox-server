@@ -74,10 +74,11 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
     parent = MultiService()
 
     channel_db = create_or_upgrade_channel_db(config["channel-db"])
-    usage_db = create_or_upgrade_usage_db(config["usage-db"])
-    log_file = (os.fdopen(int(config["log-fd"]), "w")
-                if config["log-fd"] is not None
-                else None)
+    usage_dbfile = config["usage-db"]
+    usage_db = create_or_upgrade_usage_db(usage_dbfile) if usage_dbfile else None
+    log_filename = config["log-fd"]
+    log_file = os.fdopen(int(config["log-fd"]), "w") if log_filename else None
+
     server = make_server(channel_db,
                          allow_list=config["allow-list"],
                          advertise_version=config["advertise-version"],
