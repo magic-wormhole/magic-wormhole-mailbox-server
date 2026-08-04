@@ -3,14 +3,21 @@ from twisted.internet import defer
 from twisted.internet.defer import inlineCallbacks
 from autobahn.twisted import websocket
 
+class WSError(Exception):
+    pass
+
 class WSClient(websocket.WebSocketClientProtocol):
     def __init__(self):
         websocket.WebSocketClientProtocol.__init__(self)
         self.events = []
         self.errors = []
         self.d = None
+        self._opened = False
         self.ping_counter = itertools.count(0)
     def onOpen(self):
+        # server side errors will prevent this from being called, so
+        # the test would hang, but autobahn does call onClose
+        self._opened = True
         self.factory.d.callback(self)
     def onMessage(self, payload, isBinary):
         assert not isBinary
@@ -29,6 +36,10 @@ class WSClient(websocket.WebSocketClientProtocol):
         self.transport.loseConnection()
         return self.d
     def onClose(self, wasClean, code, reason):
+        if not self._opened:
+            # fast-fail the test since onOpen was not called
+            self.factory.d.errback(WSError(reason))
+            # in this case, self.d won't be set
         if self.d:
             self.d.callback((wasClean, code, reason))
 
