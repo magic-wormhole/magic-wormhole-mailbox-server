@@ -24,6 +24,8 @@ def make_web_server(server, log_requests, websocket_protocol_options=()):
 
     site = PrivacyEnhancedSite(root)
     site.logRequests = log_requests
+    # the tests use this to wait for connections to shut down
+    site.ws_factory = wsrf
 
     return site
 

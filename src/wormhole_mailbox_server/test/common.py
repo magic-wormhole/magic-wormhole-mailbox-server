@@ -1,6 +1,7 @@
 #from __future__ import unicode_literals
 from twisted.internet import reactor, endpoints
 from twisted.internet.defer import inlineCallbacks
+from twisted.internet.task import deferLater
 from ..database import create_or_upgrade_channel_db, create_or_upgrade_usage_db
 from ..server import make_server
 from ..web import make_web_server
@@ -31,9 +32,25 @@ class ServerBase:
             self.relayurl = "ws://127.0.0.1:%d/v1" % addr.port
             self.rdv_ws_port = addr.port
 
+    @inlineCallbacks
+    def wait_for_server_disconnects(self):
+        # Dropping the client end of a connection is asynchronous: the
+        # server won't hear about it until a later reactor turn. Trial
+        # only spins the reactor a couple of times after tearDown before
+        # it checks for leftovers, so if we don't wait, we occasionally
+        # (about one run in 300) leave a live server-side connection
+        # behind, and its autobahn autoPing timer, both of which get
+        # reported as DirtyReactorAggregateError.
+        if not self._lp:
+            return
+        while self._site.ws_factory.getConnectionCount():
+            yield deferLater(reactor, 0.0)
+
+    @inlineCallbacks
     def tearDown(self):
+        yield self.wait_for_server_disconnects()
         if self._lp:
-            return self._lp.stopListening()
+            yield self._lp.stopListening()
 
 class _Util:
     def _nameplate(self, app, name):
