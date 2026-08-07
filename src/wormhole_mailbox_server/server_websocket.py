@@ -1,6 +1,7 @@
 import time
 from twisted.internet import reactor
 from twisted.python import log
+from twisted.logger import Logger
 from autobahn.twisted import websocket
 from .server import CrowdedError, ReclaimedError, SidedMessage, check_valid_nameplate
 from .util import dict_to_bytes, bytes_to_dict
@@ -95,6 +96,8 @@ class Error(Exception):
         self._explain = explain
 
 class WebSocketServer(websocket.WebSocketServerProtocol):
+    _log = Logger() # not: autobahn claims .log, so we use ._log
+
     def __init__(self):
         websocket.WebSocketServerProtocol.__init__(self)
         self._app = None
@@ -111,6 +114,18 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self._peer_addr_port = None
 
     def onConnect(self, request):
+        # Exceptions in onConnect are caught by autobahn, which logs
+        # them as a warning (without the Failure object) and does an
+        # HTTP 500. We want Trial unit tests to notice errors here, so
+        # we log it ourselves. We can't use twisted.python.log.err()
+        # because tests mock that out.
+        try:
+            return self._onConnect(request)
+        except Exception:
+            self._log.failure("error in onConnect")
+            raise
+
+    def _onConnect(self, request):
         rv = self.factory._server
         # Caddy uses capitalized headers like X-Real-IP and X-Real-Port, which
         # you see if you forward Caddy to netcat. But the twisted/autobahn
@@ -160,6 +175,18 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         return you
 
     def onOpen(self):
+        # onOpen is called in a Deferred chain that lacks an errback,
+        # so failures here would be unhandled (lingering until GC
+        # collects the Deferred, which in a unit test would blame the
+        # wrong test), and won't inform the client. We log it
+        # promptly, and disconnect the client too.
+        try:
+            self._onOpen()
+        except Exception:
+            self._log.failure("error in onOpen")
+            self.sendClose(self.CLOSE_STATUS_CODE_INTERNAL_ERROR)
+
+    def _onOpen(self):
         rv = self.factory._server
         welcome = rv.get_welcome().copy()
         welcome["your-address"] = self.get_your_address()
