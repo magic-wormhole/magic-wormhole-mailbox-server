@@ -17,13 +17,13 @@ class Service(unittest.TestCase):
                     with mock.patch("wormhole_mailbox_server.server_tap.make_web_server", return_value=ws) as mws:
                         s = server_tap.makeService(o)
         self.assertEqual(ccdb.mock_calls, [mock.call("relay.sqlite")])
-        self.assertEqual(ccub.mock_calls, [mock.call(None)])
+        self.assertEqual(ccub.mock_calls, [])
         self.assertEqual(ms.mock_calls, [mock.call(cdb, allow_list=True,
                                                    advertise_version=None,
                                                    signal_error=None,
                                                    welcome_motd=None,
                                                    blur_usage=None,
-                                                   usage_db=udb,
+                                                   usage_db=None,
                                                    log_file=None)])
         self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
         self.assertIsInstance(s, MultiService)
@@ -50,5 +50,30 @@ class Service(unittest.TestCase):
                                                    signal_error=None,
                                                    welcome_motd=None,
                                                    blur_usage=None,
-                                                   usage_db=udb,
+                                                   usage_db=None,
                                                    log_file=fd)])
+
+    def test_usagedb(self):
+        o = server_tap.Options()
+        o.parseOptions(["--usage-db=usage.sqlite"])
+        cdb = object()
+        udb = object()
+        r = mock.Mock()
+        ws = object()
+        with mock.patch("wormhole_mailbox_server.server_tap.create_or_upgrade_channel_db", return_value=cdb) as ccdb:
+            with mock.patch("wormhole_mailbox_server.server_tap.create_or_upgrade_usage_db", return_value=udb) as ccub:
+                with mock.patch("wormhole_mailbox_server.server_tap.make_server", return_value=r) as ms:
+                    with mock.patch("wormhole_mailbox_server.server_tap.make_web_server", return_value=ws) as mws:
+                        s = server_tap.makeService(o)
+        self.assertEqual(ccdb.mock_calls, [mock.call("relay.sqlite")])
+        self.assertEqual(ccub.mock_calls, [mock.call("usage.sqlite")])
+        self.assertEqual(ms.mock_calls, [mock.call(cdb, allow_list=True,
+                                                   advertise_version=None,
+                                                   signal_error=None,
+                                                   welcome_motd=None,
+                                                   blur_usage=None,
+                                                   usage_db=udb,
+                                                   log_file=None)])
+        self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
+        self.assertIsInstance(s, MultiService)
+        self.assertEqual(len(r.mock_calls), 1) # setServiceParent
