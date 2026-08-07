@@ -115,6 +115,7 @@ class Mailbox:
                          " VALUES (?,?,?,?,?, ?,?)",
                          (self._app_id, self._mailbox_id, sm.side,
                           sm.phase, sm.body, sm.server_rx, sm.msg_id))
+        # XXX other uses of _touch() seem to use a timestamp, what is server_rx exactly?
         self._touch(sm.server_rx)
         self._db.commit()
 
@@ -122,6 +123,11 @@ class Mailbox:
         assert isinstance(sm, SidedMessage)
         self._add_message(sm)
         self.broadcast_message(sm)
+
+    def remove_message(self, their_phase, their_side):
+        self._db.execute("DELETE FROM `messages`"
+                         " WHERE `side`=? AND `phase`=?", (their_side, their_phase))
+        self._db.commit()
 
     def close(self, side, mood, when):
         assert isinstance(side, str), type(side)
