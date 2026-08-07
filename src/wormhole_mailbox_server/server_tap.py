@@ -1,4 +1,4 @@
-import os, json, time
+import json, time
 from twisted.internet import reactor
 from twisted.python import usage, log
 from twisted.application.service import MultiService
@@ -15,13 +15,12 @@ This service forwards short messages between clients, to perform key exchange
 and connection setup."""
 
 class Options(usage.Options):
-    synopsis = "[--port=] [--log-fd] [--blur-usage=] [--usage-db=]"
+    synopsis = "[--port=] [--blur-usage=] [--usage-db=]"
     longdesc = LONGDESC
 
     optParameters = [
         ("port", "p", r"tcp:4000:interface=\:\:", "endpoint to listen on"),
         ("blur-usage", None, None, "round logged access times to improve privacy"),
-        ("log-fd", None, None, "write JSON usage logs to this file descriptor"),
         ("channel-db", None, "relay.sqlite", "location for the state database"),
         ("usage-db", None, None, "record usage data (SQLite)"),
         ("advertise-version", None, None, "version to recommend to clients"),
@@ -39,9 +38,6 @@ class Options(usage.Options):
 
     def opt_disallow_list(self):
         self["allow-list"] = False
-
-    def opt_log_fd(self, arg):
-        self["log-fd"] = int(arg)
 
     def opt_blur_usage(self, arg):
         # --blur-usage= is in seconds. If the option isn't provided, we'll keep
@@ -76,8 +72,6 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
     channel_db = create_or_upgrade_channel_db(config["channel-db"])
     usage_dbfile = config["usage-db"]
     usage_db = create_or_upgrade_usage_db(usage_dbfile) if usage_dbfile else None
-    log_filename = config["log-fd"]
-    log_file = os.fdopen(int(config["log-fd"]), "w") if log_filename else None
 
     server = make_server(channel_db,
                          allow_list=config["allow-list"],
@@ -85,7 +79,6 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
                          signal_error=config["signal-error"],
                          blur_usage=config["blur-usage"],
                          usage_db=usage_db,
-                         log_file=log_file,
                          welcome_motd=config["motd"],
                          )
     server.setServiceParent(parent)

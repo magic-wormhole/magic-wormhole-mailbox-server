@@ -17,7 +17,6 @@ class Config(unittest.TestCase):
                              "usage-db": None,
                              "blur-usage": None,
                              "motd": None,
-                             "log-fd": None,
                              "websocket-protocol-options": [],
                              })
 
@@ -33,7 +32,6 @@ class Config(unittest.TestCase):
                              "usage-db": None,
                              "blur-usage": None,
                              "motd": None,
-                             "log-fd": None,
                              "websocket-protocol-options": [],
                              })
 
@@ -49,7 +47,6 @@ class Config(unittest.TestCase):
                              "usage-db": None,
                              "blur-usage": 60,
                              "motd": None,
-                             "log-fd": None,
                              "websocket-protocol-options": [],
                              })
 
@@ -65,7 +62,6 @@ class Config(unittest.TestCase):
                              "usage-db": None,
                              "blur-usage": None,
                              "motd": None,
-                             "log-fd": None,
                              "websocket-protocol-options": [],
                              })
 
@@ -81,23 +77,6 @@ class Config(unittest.TestCase):
                              "usage-db": None,
                              "blur-usage": None,
                              "motd": None,
-                             "log-fd": None,
-                             "websocket-protocol-options": [],
-                             })
-
-    def test_log_fd(self):
-        o = server_tap.Options()
-        o.parseOptions(["--log-fd=5"])
-        self.assertEqual(o, {"port": PORT,
-                             "channel-db": "relay.sqlite",
-                             "disallow-list": 0,
-                             "allow-list": True,
-                             "advertise-version": None,
-                             "signal-error": None,
-                             "usage-db": None,
-                             "blur-usage": None,
-                             "motd": None,
-                             "log-fd": 5,
                              "websocket-protocol-options": [],
                              })
 
@@ -113,7 +92,6 @@ class Config(unittest.TestCase):
                              "usage-db": None,
                              "blur-usage": None,
                              "motd": None,
-                             "log-fd": None,
                              "websocket-protocol-options": [],
                              })
 
@@ -128,7 +106,6 @@ class Config(unittest.TestCase):
                              "usage-db": None,
                              "blur-usage": None,
                              "motd": None,
-                             "log-fd": None,
                              "websocket-protocol-options": [],
                              })
 
@@ -144,7 +121,6 @@ class Config(unittest.TestCase):
                              "usage-db": None,
                              "blur-usage": None,
                              "motd": None,
-                             "log-fd": None,
                              "websocket-protocol-options": [],
                              })
 
@@ -160,7 +136,6 @@ class Config(unittest.TestCase):
                              "usage-db": "usage.sqlite",
                              "blur-usage": None,
                              "motd": None,
-                             "log-fd": None,
                              "websocket-protocol-options": [],
                              })
 
@@ -176,7 +151,6 @@ class Config(unittest.TestCase):
                              "usage-db": None,
                              "blur-usage": None,
                              "motd": None,
-                             "log-fd": None,
                              "websocket-protocol-options": [("foo", "bar")],
                              })
 
@@ -194,7 +168,6 @@ class Config(unittest.TestCase):
                              "usage-db": None,
                              "blur-usage": None,
                              "motd": None,
-                             "log-fd": None,
                              "websocket-protocol-options": [("foo", "bar"),
                                                             ("baz", [1, "buz"]),
                                                             ],
