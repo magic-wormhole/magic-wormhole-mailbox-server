@@ -18,6 +18,8 @@ class Config(unittest.TestCase):
                              "blur-usage": None,
                              "motd": None,
                              "websocket-protocol-options": [],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
     def test_advertise_version(self):
@@ -33,6 +35,8 @@ class Config(unittest.TestCase):
                              "blur-usage": None,
                              "motd": None,
                              "websocket-protocol-options": [],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
     def test_blur(self):
@@ -48,6 +52,8 @@ class Config(unittest.TestCase):
                              "blur-usage": 60,
                              "motd": None,
                              "websocket-protocol-options": [],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
     def test_channel_db(self):
@@ -63,6 +69,8 @@ class Config(unittest.TestCase):
                              "blur-usage": None,
                              "motd": None,
                              "websocket-protocol-options": [],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
     def test_disallow_list(self):
@@ -78,6 +86,8 @@ class Config(unittest.TestCase):
                              "blur-usage": None,
                              "motd": None,
                              "websocket-protocol-options": [],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
     def test_port(self):
@@ -93,6 +103,8 @@ class Config(unittest.TestCase):
                              "blur-usage": None,
                              "motd": None,
                              "websocket-protocol-options": [],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
         o = server_tap.Options()
@@ -107,6 +119,8 @@ class Config(unittest.TestCase):
                              "blur-usage": None,
                              "motd": None,
                              "websocket-protocol-options": [],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
     def test_signal_error(self):
@@ -122,6 +136,8 @@ class Config(unittest.TestCase):
                              "blur-usage": None,
                              "motd": None,
                              "websocket-protocol-options": [],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
     def test_usage_db(self):
@@ -137,6 +153,8 @@ class Config(unittest.TestCase):
                              "blur-usage": None,
                              "motd": None,
                              "websocket-protocol-options": [],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
     def test_websocket_protocol_option_1(self):
@@ -152,6 +170,8 @@ class Config(unittest.TestCase):
                              "blur-usage": None,
                              "motd": None,
                              "websocket-protocol-options": [("foo", "bar")],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
     def test_websocket_protocol_option_2(self):
@@ -171,6 +191,8 @@ class Config(unittest.TestCase):
                              "websocket-protocol-options": [("foo", "bar"),
                                                             ("baz", [1, "buz"]),
                                                             ],
+                             "addrid-db": None,
+                             "generation-duration": 86400,
                              })
 
     def test_websocket_protocol_option_errors(self):

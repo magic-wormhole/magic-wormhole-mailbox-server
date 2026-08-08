@@ -4,7 +4,7 @@ from twisted.python import log
 from twisted.logger import Logger
 from autobahn.twisted import websocket
 from .server import CrowdedError, ReclaimedError, SidedMessage, check_valid_nameplate
-from .util import dict_to_bytes, bytes_to_dict
+from .util import dict_to_bytes, bytes_to_dict, str_or_none
 
 # The WebSocket allows the client to send "commands" to the server, and the
 # server to send "responses" to the client. Note that commands and responses
@@ -156,6 +156,11 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
             else:
                 peer_type = "ipv4"
         self._peer_addr_port = (peer_type, peer_host, int(peer_port))
+        # address_id is None if the address tracker is disabled (no --addrid-db=)
+        address_id = self.factory._server.get_address_id(peer_type, peer_host)
+        self._addr_id = address_id # for logging
+        now = time.time()
+        self._connection_tracker = self.factory._server.connection_established(address_id, now)
 
         if rv.get_log_requests():
             v = 4 if peer_type == "ipv4" else 6
@@ -201,6 +206,8 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
             self.send("ack", id=msg.get("id"))
 
             mtype = msg["type"]
+            self._connection_tracker.add_message(server_rx, mtype)
+
             if mtype == "ping":
                 return self.handle_ping(msg)
             if mtype == "bind":
@@ -243,8 +250,11 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self._app = self.factory._server.get_app(msg["appid"])
         self._side = msg["side"]
         client_version = msg.get("client_version", (None, None))
+        # ignore extra args or non-string/None
+        client_version = (str_or_none(client_version[0]), str_or_none(client_version[1]))
         # e.g. ("python", "0.xyz") . <=0.10.5 did not send client_version
         self._app.log_client_version(server_rx, self._side, client_version)
+        self._connection_tracker.bound(self._side, client_version)
 
 
     def handle_list(self):
@@ -369,6 +379,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
 
     def onClose(self, wasClean, code, reason):
         #log.msg("onClose", self, self._mailbox, self._listening)
+        self._connection_tracker.lost()
         if self._mailbox and self._listening:
             self._mailbox.remove_listener(self)
 

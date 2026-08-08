@@ -3,6 +3,7 @@ from twisted.trial import unittest
 from twisted.internet.defer import inlineCallbacks
 from twisted.internet.address import IPv4Address
 from ..server_websocket import WebSocketServerFactory
+from ..connections import ConnectionTable
 from autobahn.twisted.testing import create_pumper, create_memory_agent, MemoryReactorClock
 from autobahn.twisted.websocket import WebSocketClientProtocol
 
@@ -13,6 +14,9 @@ class FakeServer:
     WebSocket server.
 
     """
+    def __init__(self):
+        self._connection_table = ConnectionTable(None)
+
     def get_welcome(self):
         return {
             "motd": "fake message of the day"
@@ -20,6 +24,13 @@ class FakeServer:
 
     def get_log_requests(self):
         return False
+
+    def get_address_id(self, peer_type, peer_host):
+        return None
+
+    def connection_established(self, address_id, now):
+        c = self._connection_table.established(address_id, now)
+        return c
 
 
 class WebSocket(unittest.TestCase):

@@ -22,8 +22,9 @@ def get_upgrader(name, new_version):
         raise ValueError("no upgrader for %d" % new_version)
 
 
-CHANNELDB_TARGET_VERSION = 1
+CHANNELDB_TARGET_VERSION = 2
 USAGEDB_TARGET_VERSION = 2
+ADDRIDDB_TARGET_VERSION = 1
 
 def dict_factory(cursor, row):
     d = {}
@@ -131,6 +132,9 @@ def create_or_upgrade_usage_db(dbfile):
         return None
     return _get_db(dbfile, "usage", USAGEDB_TARGET_VERSION)
 
+def create_or_upgrade_addrid_db(dbfile):
+    return _get_db(dbfile, "addrid", ADDRIDDB_TARGET_VERSION)
+
 class DBDoesntExist(Exception):
     pass
 
@@ -167,6 +171,17 @@ def create_usage_db(dbfile):
     else:
         db = _atomic_create_and_initialize_db(dbfile, "usage",
                                               USAGEDB_TARGET_VERSION)
+    return db
+
+def create_addrid_db(dbfile):
+    if dbfile == ":memory:":
+        db = _open_db_connection(dbfile)
+        _initialize_db_schema(db, "addrid", ADDRIDDB_TARGET_VERSION)
+    elif os.path.exists(dbfile):
+        raise DBAlreadyExists()
+    else:
+        db = _atomic_create_and_initialize_db(dbfile, "addrid",
+                                              ADDRIDDB_TARGET_VERSION)
     return db
 
 def dump_db(db):

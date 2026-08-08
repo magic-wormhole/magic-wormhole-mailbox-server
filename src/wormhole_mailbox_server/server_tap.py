@@ -8,7 +8,8 @@ from twisted.internet import endpoints
 from .increase_rlimits import increase_rlimits
 from .server import make_server
 from .web import make_web_server
-from .database import create_or_upgrade_channel_db, create_or_upgrade_usage_db
+from .database import (create_or_upgrade_channel_db, create_or_upgrade_usage_db,
+                       create_or_upgrade_addrid_db)
 
 LONGDESC = """This plugin sets up a 'Mailbox' server for magic-wormhole.
 This service forwards short messages between clients, to perform key exchange
@@ -23,6 +24,8 @@ class Options(usage.Options):
         ("blur-usage", None, None, "round logged access times to improve privacy"),
         ("channel-db", None, "relay.sqlite", "location for the state database"),
         ("usage-db", None, None, "record usage data (SQLite)"),
+        ("addrid-db", None, None, "IP address mapping data (SQLite)"),
+        ("generation-duration", None, 86400, "lifetime of IP-address tracking table"),
         ("advertise-version", None, None, "version to recommend to clients"),
         ("signal-error", None, None, "force all clients to fail with a message"),
         ("motd", None, None, "Send a Message of the Day in the welcome"),
@@ -72,6 +75,9 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
     channel_db = create_or_upgrade_channel_db(config["channel-db"])
     usage_dbfile = config["usage-db"]
     usage_db = create_or_upgrade_usage_db(usage_dbfile) if usage_dbfile else None
+    addrid_dbfile = config["addrid-db"]
+    addrid_db = create_or_upgrade_addrid_db(addrid_dbfile) if addrid_dbfile else None
+    generation_duration = config["generation-duration"]
 
     server = make_server(channel_db,
                          allow_list=config["allow-list"],
@@ -80,8 +86,17 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
                          blur_usage=config["blur-usage"],
                          usage_db=usage_db,
                          welcome_motd=config["motd"],
+                         addrid_db=addrid_db,
                          )
     server.setServiceParent(parent)
+
+    # initialize first generation of the address-id tracking table,
+    # ignored if the server didn't build a tracker.
+    server.check_addrid_generation(time.time(), generation_duration, force=True)
+
+    # clear stale connection records from previous run
+    server.clear_connections()
+
     rebooted = time.time()
     def expire():
         now = time.time()
@@ -92,6 +107,11 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
             # catch-and-log exceptions during prune, so a single error won't
             # kill the loop. See #13 for details.
             log.msg("error during prune_all_apps")
+            log.err(e)
+        try:
+            server.check_addrid_generation(now, generation_duration)
+        except Exception as e:
+            log.msg("error during check_addrid_generation")
             log.err(e)
         server.dump_stats(now, rebooted=rebooted)
     TimerService(EXPIRATION_CHECK_PERIOD, expire).setServiceParent(parent)
