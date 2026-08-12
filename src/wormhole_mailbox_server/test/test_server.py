@@ -6,6 +6,11 @@ from ..server import (make_server, Usage,
                       SidedMessage, CrowdedError, AppNamespace)
 from ..database import create_channel_db, create_usage_db
 
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from hypothesis.stateful import (Bundle, RuleBasedStateMachine, rule, initialize,
+                                 run_state_machine_as_test)
+
 npid = "1"
 
 class Server(_Util, ServerBase, unittest.TestCase):
@@ -279,6 +284,181 @@ class Server(_Util, ServerBase, unittest.TestCase):
         mbox = app.claim_nameplate(name, "side1", 0)
         m = app.open_mailbox(mbox, "side1", 0)
         m.close("side1", "mood", 1)
+
+
+class Delete(_Util, ServerBase, unittest.TestCase):
+    """
+    When clients send `delete` the server may delete those messages.
+
+    - clients should only delete _other_ clients' messages
+      - (currently this is silently ignored .. should be error?)
+    """
+
+    def test_one_message(self):
+        """
+        add and successfully delete one message
+        """
+        app = self._server.get_app("appid")
+        name = app.allocate_nameplate("side1", 42)
+        mbox = app.claim_nameplate(name, "side1", 0)
+        m = app.open_mailbox(mbox, "side1", 0)
+        sm = SidedMessage("side1", "pake", "body", 42, "msgid")
+        m.add_message(sm)
+        assert len(m.get_messages()) == 1, "expected single message"
+
+        m.remove_message("pake", "side1")
+        # make sure it didn't forget to commit() ..
+        # get_messages() does an .execute() which would correctly
+        # commit any active transaction
+        self._server._db.rollback()
+        assert m.get_messages() == [], "expected no messages"
+
+    @settings(
+        # max_examples=10
+    )
+    @given(
+        st.text(min_size=1),
+        st.text(min_size=1),
+        st.text(),
+        st.lists(st.text()),
+        st.text(),
+    )
+    def test_messages(self, side0, mbox, msg_id, phases, body):
+        app = self._server.get_app("appid")
+        m = app.open_mailbox(mbox, side0, 0)
+        try:
+            for phase in phases:
+                sm = SidedMessage(side0, phase, body, 42, msg_id)
+                m.add_message(sm)
+            assert len(m.get_messages()) == len(phases), "mismatched message counts"
+
+            # ack all these messages
+            for phase in phases:
+                m.remove_message(phase, side0)
+            assert m.get_messages() == [], "all messages should be deleted"
+
+        finally:
+            m.close(side0, "moody", 987)
+
+
+class MailboxDeletes(RuleBasedStateMachine):
+    """
+    Checks behavior of just the Mailbox under different orderings of message-arrivals and message deletes.
+
+    Invariant: if a message arrived, _and_ a delete arrived, that
+    message should no longer be in the Mailbox
+    """
+
+    def __init__(self, server):
+        super().__init__()
+        self.side = "side"
+        self.server = server
+        self.mbox = None
+
+    messages = Bundle("messages")
+
+    @initialize()
+    def connect(self):
+        ##print()
+        # hack: we want a "fresh everything" on each exploration of
+        # the mailbox space .. perhaps should just call .setUp() from
+        # ServerBase again? Better yet: factor out the "create a test
+        # server" to a function and call that here.
+        self.server._apps = {}
+        self.server._db = create_channel_db(":memory:")
+        self.have_phases = []
+        # todo: should we "hypothesis" the setup too, to get different
+        # values for these?
+        self.app = self.server.get_app("appid")
+        self.mbox = self.app.open_mailbox("mbox", "side1", 0)
+        # double-checking our assumptions
+        assert self.mbox.get_messages() == [], "should be empty on init"
+
+    @rule(
+        target=messages,
+        phase=st.text(min_size=1),
+        body=st.text(),
+        msgid=st.text(min_size=1),
+        when=st.integers(1, 2**32),
+    )
+    def add_message(self, phase, body, msgid, when):
+        return SidedMessage(self.side, phase, body, when, msgid)
+
+    @rule(msg=messages)
+    def received(self, msg):
+        ##print("ADD {}".format(repr(msg.phase)))
+        self.have_phases.append(msg.phase)
+        self.mbox.add_message(msg)
+
+    # can we "guide" this somehow, to hint that it'll get better
+    # results if "phase" actually exists as a message already?
+    @rule(
+        phase=st.text(min_size=1),
+    )
+    def delete(self, phase):
+        ##print("REMOVE {}".format(repr(phase)))
+        try:
+            self.have_phases.remove(phase)
+        except ValueError:
+            # client deleted this, but we don't have that message
+            pass
+        self.mbox.remove_message(phase, self.side)
+        self.server._db.rollback()
+
+    @rule(msg=messages, rollback=st.sampled_from([True, False]))
+    def retained_agree(self, msg, rollback):
+        if rollback:
+            # if an operation forgot to do .commit() on the database,
+            # this will catch them by removing that transaction
+            self.server._db.rollback()
+
+        mbox_phases = [
+            m.phase
+            for m in self.mbox.get_messages()
+        ]
+        # the Mailbox should match what our internal model says, as
+        # far as having a message or not
+        if msg.phase in self.have_phases:
+            if msg.phase not in mbox_phases:
+                print("message should exist")
+            assert msg.phase in mbox_phases, "message should exist"
+        else:
+            if msg.phase in mbox_phases:
+                print("message should not exist")
+                print(repr(msg.phase))
+                for p in mbox_phases:
+                    print("  ", repr(p))
+            assert msg.phase not in mbox_phases, "message should not exist"
+
+    def teardown(self):
+        ##print("teardown", self.mbox)
+        if self.mbox is not None:
+            self.mbox.close(self.side, "happy", 1234)
+            self.mbox._shutdown();
+            del self.mbox
+        self.app.free_mailbox("mbox")
+
+
+class TestMailboxDeletes(_Util, ServerBase, unittest.TestCase):
+    """
+    A container that looks like the other tests to hold a Hypothesis
+    state-based testing instance.
+
+    (Hypothesis can mimic the normal stdlib TestCase but we're using
+    Twisted's immitation of that here...)
+    """
+
+    def create(self):
+        return MailboxDeletes(self._server)
+
+    def test_state_based_mailbox_messages(self):
+        run_state_machine_as_test(
+            self.create,
+            settings=settings(
+                max_examples=200,
+                stateful_step_count=13,
+            )
+        )
 
 
 class Prune(unittest.TestCase):
