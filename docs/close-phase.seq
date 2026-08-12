@@ -1,0 +1,79 @@
+seqdiag {
+  default_fontsize = 16;
+  edge_length = 320;
+
+  alice <- mailbox [label = "welcome"]
+  alice -> mailbox [label = "bind appid, side"]
+  alice -> mailbox [label = "allocate", note = "side assigned"]
+  alice <- mailbox [label = "allocated: nameplate_id"]
+  alice -> mailbox [label = "claim nameplate_id"]
+  alice <- mailbox [label = "claimed: mailbox_id"]
+  alice -> mailbox [label = "open mailbox_id"]
+
+  alice -> mailbox [label = "add phase=pake body"]
+  alice <- mailbox [label = "message phase=pake side=a body"]
+
+  bob <- mailbox [label = "welcome"]
+  bob -> mailbox [label = "bind appid, side"]
+// note: no allocate / allocated
+  bob -> mailbox [label = "claim nameplate_id"]
+  bob <- mailbox [label = "claimed: mailbox_id"]
+  bob -> mailbox [label = "open mailbox_id"]
+  bob <- mailbox [label = "message phase=pake side=a body"]
+  bob -> mailbox [label = "add phase=pake body"]
+  bob <- mailbox [label = "mesage phase=pake side=b body"]
+
+  alice <- mailbox [label = "mesage phase=pake side=b body"]
+  alice -> mailbox [label = "release nameplate_id"]
+  alice <- mailbox [label = "released"]
+  alice -> mailbox [label = "add phase=version side=a body"]
+
+  bob <- mailbox [label = "message phase=version side=a body"]
+  alice <- mailbox [label = "message phase=version side=a body"]
+
+  bob -> mailbox [label = "add phase=version side=b body"]
+  bob <- mailbox [label = "message phase=version side=b body"]
+  alice <- mailbox [label = "message phase=version side=b body"]
+
+=== application messages ===
+
+  alice -> mailbox [label = "add phase=0 side=a body"]
+  alice <- mailbox [label = "message phase=0 side=a body"]
+  bob   <- mailbox [label = "message phase=0 side=a body"]
+
+  alice -> mailbox [label = "add phase=1 side=a body"]
+  alice <- mailbox [label = "message phase=1 side=a body"]
+  bob   <- mailbox [label = "message phase=1 side=a body"]
+
+  bob -> mailbox [label = "add phase=0 side=b body"]
+  bob   <- mailbox [label = "message phase=0 side=b body"]
+  alice <- mailbox [label = "message phase=0 side=b body"]
+
+=== closing ===
+
+  bob -> mailbox [label = "add phase=closing side=b body"]
+  bob <- mailbox [label = "message phase=closing side=b body"]
+  alice <- mailbox [label = "message phase=closing side=b body"]
+
+... bob sends no more messages ...
+... however, alice can still ...
+
+  alice -> mailbox [label = "add phase=2 side=a body"]
+  bob <- mailbox [label = "message phase=2 side=a body"]
+  alice <- mailbox [label = "message phase=2 side=a body"]
+
+... alice sends no more messages ...
+
+  alice -> mailbox [label = "add phase=closing side=a body"]
+  bob <- mailbox [label = "message phase=closing side=a body"]
+  alice <- mailbox [label = "message phase=closing side=a body"]
+
+... both sides know both sides done ...
+
+  alice -> mailbox [label = "close mailbox_id mood"]
+  alice <- mailbox [label = "closed"]
+
+  bob -> mailbox [label = "close mailbox_id mood"]
+  bob <- mailbox [label = "closed"]
+
+}
