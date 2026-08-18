@@ -1,4 +1,4 @@
-import json, time
+import json
 from twisted.internet import reactor
 from twisted.python import usage, log
 from twisted.application.service import MultiService
@@ -92,14 +92,14 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
 
     # initialize first generation of the address-id tracking table,
     # ignored if the server didn't build a tracker.
-    server.check_addrid_generation(time.time(), generation_duration, force=True)
+    server.check_addrid_generation(reactor.seconds(), generation_duration, force=True)
 
     # clear stale connection records from previous run
     server.clear_connections()
 
-    rebooted = time.time()
+    rebooted = reactor.seconds()
     def expire():
-        now = time.time()
+        now = reactor.seconds()
         old = now - CHANNEL_EXPIRATION_TIME
         try:
             server.prune_all_apps(now, old)

@@ -1,4 +1,4 @@
-import io, time
+import io
 from unittest import mock
 import treq
 from twisted.trial import unittest
@@ -453,7 +453,7 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
         app = self._server.get_app("appid")
         mb1 = app.open_mailbox("mb1", "side2", 0)
         l1 = []; stop1 = []; stop1_f = lambda: stop1.append(True)
-        mb1.add_listener("handle1", l1.append, stop1_f)
+        mb1.add_listener("handle1", l1.append, stop1_f, lambda: None)
 
         c1.send("add") # didn't open first
         err = yield c1.next_non_ack()
@@ -575,8 +575,8 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
 
         yield c1.close()
         # wait for the server to notice the socket has closed
-        started = time.time()
-        while mb1.has_listeners() and (time.time()-started < 5.0):
+        started = reactor.seconds()
+        while mb1.has_listeners() and (reactor.seconds()-started < 5.0):
             d = defer.Deferred()
             reactor.callLater(0.01, d.callback, None)
             yield d

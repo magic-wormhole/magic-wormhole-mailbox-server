@@ -34,7 +34,7 @@ class Current(_Make, unittest.TestCase):
     def test_current_one_listener(self):
         s, db, app = self.make()
         mbox = app.open_mailbox("m1", "s1", 1)
-        mbox.add_listener("h1", lambda sm: None, lambda: None)
+        mbox.add_listener("h1", lambda sm: None, lambda: None, lambda: None)
         s.dump_stats(456, rebooted=451)
         self.assertEqual(db.execute("SELECT * FROM `current`").fetchall(),
                          [dict(rebooted=451, updated=456, blur_time=None,

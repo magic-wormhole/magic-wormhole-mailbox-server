@@ -198,7 +198,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
         self.assertIn(("side3", False, "company"), sides)
 
         l1 = []; stop1 = []; stop1_f = lambda: stop1.append(True)
-        m1.add_listener("handle1", l1.append, stop1_f)
+        m1.add_listener("handle1", l1.append, stop1_f, lambda: None)
 
         # closing the second side frees the mailbox, and adds usage
         m1.close("side2", "mood", 7)
@@ -226,7 +226,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
 
         l1 = []; stop1 = []; stop1_f = lambda: stop1.append(True)
         l2 = []; stop2 = []; stop2_f = lambda: stop2.append(True)
-        old = m1.add_listener("handle1", l1.append, stop1_f)
+        old = m1.add_listener("handle1", l1.append, stop1_f, lambda: None)
         self.assertEqual(len(old), 1)
         self.assertEqual(old[0].side, "side1")
         self.assertEqual(old[0].body, "body")
@@ -236,7 +236,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
                                     msg_id="msgid"))
         self.assertEqual(len(l1), 1)
         self.assertEqual(l1[0].body, "body2")
-        old = m1.add_listener("handle2", l2.append, stop2_f)
+        old = m1.add_listener("handle2", l2.append, stop2_f, lambda: None)
         self.assertEqual(len(old), 2)
 
         m1.add_message(SidedMessage(side="side1", phase="phase3",
@@ -423,7 +423,7 @@ class Prune(unittest.TestCase):
         mb.add_message(sm)
 
         if has_listeners:
-            mb.add_listener("handle", None, None)
+            mb.add_listener("handle", None, None, lambda: None)
 
         if (mailbox == NEW or has_listeners):
             if nameplate:

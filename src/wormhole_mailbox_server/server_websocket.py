@@ -1,4 +1,3 @@
-import time
 from twisted.internet import reactor
 from twisted.python import log
 from twisted.logger import Logger
@@ -159,7 +158,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         # address_id is None if the address tracker is disabled (no --addrid-db=)
         address_id = self.factory._server.get_address_id(peer_type, peer_host)
         self._addr_id = address_id # for logging
-        now = time.time()
+        now = self.factory.reactor.seconds()
         self._connection_tracker = self.factory._server.connection_established(address_id, now)
 
         if rv.get_log_requests():
@@ -198,7 +197,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         self.send("welcome", welcome=welcome)
 
     def onMessage(self, payload, isBinary):
-        server_rx = time.time()
+        server_rx = self._reactor.seconds()
         msg = bytes_to_dict(payload)
         try:
             if "type" not in msg:
@@ -326,10 +325,12 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
         def _send(sm):
             self.send("message", side=sm.side, phase=sm.phase,
                       body=sm.body, server_rx=sm.server_rx, id=sm.msg_id)
+        def _error(err):
+            self.send("error", error=err)
         def _stop():
             pass
         self._listening = True
-        for old_sm in self._mailbox.add_listener(self, _send, _stop):
+        for old_sm in self._mailbox.add_listener(self, _send, _stop, _error):
             _send(old_sm)
 
     def handle_add(self, msg, server_rx):
@@ -373,7 +374,7 @@ class WebSocketServer(websocket.WebSocketServerProtocol):
 
     def send(self, mtype, **kwargs):
         kwargs["type"] = mtype
-        kwargs["server_tx"] = time.time()
+        kwargs["server_tx"] = self._reactor.seconds()
         payload = dict_to_bytes(kwargs)
         self.sendMessage(payload, False)
 
