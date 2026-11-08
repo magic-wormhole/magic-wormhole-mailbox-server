@@ -6,8 +6,8 @@ class ConnectionTable(object):
         self._store = MailboxStore(db) if db is not None else None
 
     def clear(self):
-        self._store.clear_connections()
-        self._store.commit()
+        with self._store.transaction():
+            self._store.clear_connections()
 
     def established(self, address_id, now):
         if not address_id:
@@ -15,9 +15,9 @@ class ConnectionTable(object):
         (addrid_generation, addrid_counter) = address_id
         id = None
         if self._store:
-            id = self._store.insert_connection(
-                addrid_generation, addrid_counter, now, now)
-            self._store.commit()
+            with self._store.transaction():
+                id = self._store.insert_connection(
+                    addrid_generation, addrid_counter, now, now)
         return Connection(self._store, id)
 
 
@@ -29,18 +29,18 @@ class Connection(object):
     def bound(self, side, client_version):
         if self._store:
             (implementation, version) = client_version
-            self._store.bind_connection(self._id, side, implementation,
-                                        version)
-            self._store.commit()
+            with self._store.transaction():
+                self._store.bind_connection(self._id, side, implementation,
+                                            version)
 
     def add_message(self, now, name):
         if self._store:
-            self._store.update_connection_active(self._id, now)
-            self._store.insert_connection_message(self._id, now, name)
-            self._store.commit()
+            with self._store.transaction():
+                self._store.update_connection_active(self._id, now)
+                self._store.insert_connection_message(self._id, now, name)
 
     def lost(self):
         if self._store:
-            self._store.delete_connection_messages(self._id)
-            self._store.delete_connection(self._id)
-            self._store.commit()
+            with self._store.transaction():
+                self._store.delete_connection_messages(self._id)
+                self._store.delete_connection(self._id)

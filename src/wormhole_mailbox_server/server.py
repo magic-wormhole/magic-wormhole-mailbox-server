@@ -48,25 +48,26 @@ class Mailbox:
         assert isinstance(side, str), type(side)
         store = self._store
 
-        already = store.get_mailbox_side(self._mailbox_id, side)
-        if not already:
-            store.insert_mailbox_side(self._mailbox_id, True, side, when)
-        # We accept re-opening a mailbox which a side previously closed,
-        # unlike claim_nameplate(), which forbids any side from re-claiming a
-        # nameplate which they previously released. (Nameplates forbid this
-        # because the act of claiming a nameplate for the first time causes a
-        # new mailbox to be created, which should only happen once).
-        # Mailboxes have their own distinct objects (to manage
-        # subscriptions), so closing one which was already closed requires
-        # making a new object, which works by calling open() just before
-        # close(). We really do want to support re-closing closed mailboxes,
-        # because this enables intermittently-connected clients, who remember
-        # sending a 'close' but aren't sure whether it was received or not,
-        # then get shut down. Those clients will wake up and re-send the
-        # 'close', until they receive the 'closed' ack message.
+        with store.transaction():
+            already = store.get_mailbox_side(self._mailbox_id, side)
+            if not already:
+                store.insert_mailbox_side(self._mailbox_id, True, side, when)
+            # We accept re-opening a mailbox which a side previously closed,
+            # unlike claim_nameplate(), which forbids any side from re-claiming a
+            # nameplate which they previously released. (Nameplates forbid this
+            # because the act of claiming a nameplate for the first time causes a
+            # new mailbox to be created, which should only happen once).
+            # Mailboxes have their own distinct objects (to manage
+            # subscriptions), so closing one which was already closed requires
+            # making a new object, which works by calling open() just before
+            # close(). We really do want to support re-closing closed mailboxes,
+            # because this enables intermittently-connected clients, who remember
+            # sending a 'close' but aren't sure whether it was received or not,
+            # then get shut down. Those clients will wake up and re-send the
+            # 'close', until they receive the 'closed' ack message.
 
-        self._touch(when)
-        store.commit() # XXX: reconcile the need for this with the comment above
+            self._touch(when)
+        # XXX: reconcile the need for this with the comment above
 
     def _touch(self, when):
         self._store.update_mailbox_updated(self._mailbox_id, when)
@@ -102,11 +103,11 @@ class Mailbox:
             send_f(sm)
 
     def _add_message(self, sm):
-        self._store.insert_message(self._app_id, self._mailbox_id,
-                                   sm.side, sm.phase, sm.body, sm.server_rx,
-                                   sm.msg_id)
-        self._touch(sm.server_rx)
-        self._store.commit()
+        with self._store.transaction():
+            self._store.insert_message(self._app_id, self._mailbox_id,
+                                       sm.side, sm.phase, sm.body,
+                                       sm.server_rx, sm.msg_id)
+            self._touch(sm.server_rx)
 
     def add_message(self, sm):
         assert isinstance(sm, SidedMessage)
@@ -116,38 +117,41 @@ class Mailbox:
     def close(self, side, mood, when):
         assert isinstance(side, str), type(side)
         store = self._store
-        row = store.get_mailbox(self._app_id, self._mailbox_id)
-        if not row:
-            return
-        for_nameplate = row["for_nameplate"]
+        with store.transaction():
+            row = store.get_mailbox(self._app_id, self._mailbox_id)
+            if not row:
+                return
+            for_nameplate = row["for_nameplate"]
 
-        row = store.get_mailbox_side(self._mailbox_id, side)
-        if not row:
-            return
-        store.close_mailbox_side(self._mailbox_id, side, mood)
-        store.commit()
+            row = store.get_mailbox_side(self._mailbox_id, side)
+            if not row:
+                return
+            store.close_mailbox_side(self._mailbox_id, side, mood)
 
-        # are any sides still open?
-        side_rows = store.get_mailbox_sides(self._mailbox_id)
-        if any([sr["opened"] for sr in side_rows]):
-            return
+            # are any sides still open?
+            side_rows = store.get_mailbox_sides(self._mailbox_id)
+            if any([sr["opened"] for sr in side_rows]):
+                return
 
-        # nope. delete and summarize
+            # nope. delete and summarize
 
-        # if the nameplate is still allocated we'll get a foreign-key
-        # failure when trying to delete the mailbox, so get rid of
-        # those first
-        store.delete_nameplate_sides_for_side(side)
-        store.delete_nameplates_for_mailbox(self._mailbox_id)
-        # remove mailbox content
-        store.delete_messages(self._mailbox_id)
-        store.delete_mailbox_sides(self._mailbox_id)
-        store.delete_mailbox(self._mailbox_id)
+            # if the nameplate is still allocated we'll get a foreign-key
+            # failure when trying to delete the mailbox, so get rid of
+            # those first
+            store.delete_nameplate_sides_for_side(side)
+            store.delete_nameplates_for_mailbox(self._mailbox_id)
+            # remove mailbox content
+            store.delete_messages(self._mailbox_id)
+            store.delete_mailbox_sides(self._mailbox_id)
+            store.delete_mailbox(self._mailbox_id)
+
+        # Usage lives in a separate database, so it cannot share the channel
+        # transaction. Record it after the channel state is durable.
         if self._usage_store:
-            self._app._summarize_mailbox_and_store(for_nameplate, side_rows,
-                                                when, pruned=False)
-            self._usage_store.commit()
-        store.commit()
+            with self._usage_store.transaction():
+                self._app._summarize_mailbox_and_store(
+                    for_nameplate, side_rows, when, pruned=False)
+
         # Shut down any listeners, just in case they're still lingering
         # around.
         for (send_f, stop_f) in self._listeners.values():
@@ -180,9 +184,9 @@ class AppNamespace:
         implementation = client_version[0]
         version = client_version[1]
         if self._usage_store:
-            self._usage_store.insert_client_version(
-                self._app_id, side, server_rx, implementation, version)
-            self._usage_store.commit()
+            with self._usage_store.transaction():
+                self._usage_store.insert_client_version(
+                    self._app_id, side, server_rx, implementation, version)
 
     def get_nameplate_ids(self):
         if not self._allow_list:
@@ -227,26 +231,29 @@ class AppNamespace:
         assert isinstance(side, str), type(side)
         check_valid_nameplate(name)
         store = self._store
-        row = store.get_nameplate(self._app_id, name)
-        if not row:
-            if self._log_requests:
-                log.msg(f"creating nameplate#{name} for app_id {self._app_id}")
-            mailbox_id = generate_mailbox_id()
-            self._add_mailbox(mailbox_id, True, side, when) # ensure row exists
-            npid = store.insert_nameplate(self._app_id, name, mailbox_id)
-        else:
-            npid = row["id"]
-            mailbox_id = row["mailbox_id"]
+        with store.transaction():
+            row = store.get_nameplate(self._app_id, name)
+            if not row:
+                if self._log_requests:
+                    log.msg(f"creating nameplate#{name} for app_id {self._app_id}")
+                mailbox_id = generate_mailbox_id()
+                self._add_mailbox(mailbox_id, True, side, when) # ensure row exists
+                npid = store.insert_nameplate(self._app_id, name, mailbox_id)
+            else:
+                npid = row["id"]
+                mailbox_id = row["mailbox_id"]
 
-        row = store.get_nameplate_side(npid, side)
-        if not row:
-            store.insert_nameplate_side(npid, True, side, when)
-        else:
-            if not row["claimed"]:
-                raise ReclaimedError("you cannot re-claim a nameplate that your side previously released")
-            # since that might cause a new mailbox to be allocated
-        store.commit()
+            row = store.get_nameplate_side(npid, side)
+            if not row:
+                store.insert_nameplate_side(npid, True, side, when)
+            else:
+                if not row["claimed"]:
+                    raise ReclaimedError("you cannot re-claim a nameplate that your side previously released")
+                # since that might cause a new mailbox to be allocated
 
+        # Open the mailbox in its own transaction: a crowded claim keeps the
+        # offending side rows (so the channel is summarized as "crowded")
+        # even though the caller sees an error.
         self.open_mailbox(mailbox_id, side, when) # may raise CrowdedError
         rows = store.get_nameplate_sides(npid)
         if len(rows) > 2:
@@ -265,31 +272,32 @@ class AppNamespace:
         assert isinstance(name, str), type(name)
         assert isinstance(side, str), type(side)
         store = self._store
-        np_row = store.get_nameplate(self._app_id, name)
-        if not np_row:
-            return
-        npid = np_row["id"]
-        row = store.get_nameplate_side(npid, side)
-        if not row:
-            return
-        store.set_nameplate_side_claimed(npid, side, False)
-        store.commit()
+        with store.transaction():
+            np_row = store.get_nameplate(self._app_id, name)
+            if not np_row:
+                return
+            npid = np_row["id"]
+            row = store.get_nameplate_side(npid, side)
+            if not row:
+                return
+            store.set_nameplate_side_claimed(npid, side, False)
 
-        # now, are there any remaining claims?
-        side_rows = store.get_nameplate_sides(npid)
-        claims = [1 for sr in side_rows if sr["claimed"]]
-        if claims:
-            return
-        # delete and summarize
-        store.delete_nameplate_sides(npid)
-        store.delete_nameplate(npid)
+            # now, are there any remaining claims?
+            side_rows = store.get_nameplate_sides(npid)
+            claims = [1 for sr in side_rows if sr["claimed"]]
+            if claims:
+                return
+            # delete and summarize
+            store.delete_nameplate_sides(npid)
+            store.delete_nameplate(npid)
+
         if self._usage_store:
-            self._summarize_nameplate_and_store(side_rows, when, pruned=False)
-            self._usage_store.commit()
-        store.commit()
+            with self._usage_store.transaction():
+                self._summarize_nameplate_and_store(
+                    side_rows, when, pruned=False)
 
     def _summarize_nameplate_and_store(self, side_rows, delete_time, pruned):
-        # requires caller to self._usage_store.commit()
+        # requires caller to open a usage-store transaction
         u = self._summarize_nameplate_usage(side_rows, delete_time, pruned)
         self._usage_store.insert_nameplate_usage(
             self._app_id, u.started, u.total_time, u.waiting_time, u.result)
@@ -325,23 +333,26 @@ class AppNamespace:
 
     def open_mailbox(self, mailbox_id, side, when):
         assert isinstance(mailbox_id, str), type(mailbox_id)
-        self._add_mailbox(mailbox_id, False, side, when) # ensure row exists
         store = self._store
-        if not mailbox_id in self._mailboxes: # ensure Mailbox object exists
-            if self._log_requests:
-                log.msg(f"spawning #{mailbox_id} for app_id {self._app_id}")
-            self._mailboxes[mailbox_id] = Mailbox(self,
-                                                  self._store,
-                                                  self._usage_store,
-                                                  self._app_id, mailbox_id)
-        mailbox = self._mailboxes[mailbox_id]
+        with store.transaction():
+            self._add_mailbox(mailbox_id, False, side, when) # ensure row exists
+            if not mailbox_id in self._mailboxes: # ensure Mailbox object exists
+                if self._log_requests:
+                    log.msg(f"spawning #{mailbox_id} for app_id {self._app_id}")
+                self._mailboxes[mailbox_id] = Mailbox(self,
+                                                      self._store,
+                                                      self._usage_store,
+                                                      self._app_id, mailbox_id)
+            mailbox = self._mailboxes[mailbox_id]
 
-        # delegate to mailbox.open() to add a row to mailbox_sides, and
-        # update the mailbox.updated timestamp
-        mailbox.open(side, when)
-        store.commit()
-        rows = store.get_mailbox_sides(mailbox_id)
-        if len(rows) > 2:
+            # delegate to mailbox.open() to add a row to mailbox_sides, and
+            # update the mailbox.updated timestamp
+            mailbox.open(side, when)
+            rows = store.get_mailbox_sides(mailbox_id)
+            crowded = len(rows) > 2
+        if crowded:
+            # Preserve the crowded side rows for usage summaries; the caller
+            # still receives an error.
             raise CrowdedError("too many sides have opened this mailbox")
         return mailbox
 
@@ -417,60 +428,59 @@ class AppNamespace:
         store = self._store
         modified = False
 
-        for mailbox in self._mailboxes.values():
-            if mailbox.has_listeners():
-                log.msg(f"touch {mailbox._mailbox_id} because listeners")
-                mailbox._touch(now)
-        store.commit() # make sure the updates are visible below
+        with store.transaction():
+            for mailbox in self._mailboxes.values():
+                if mailbox.has_listeners():
+                    log.msg(f"touch {mailbox._mailbox_id} because listeners")
+                    mailbox._touch(now)
 
-        new_mailboxes = set()
-        old_mailboxes = set()
-        for row in store.get_mailboxes(self._app_id):
-            mailbox_id = row["id"]
-            log.msg(f"  1: age={now - row['updated']}, old={now - old}, {mailbox_id}")
-            if row["updated"] > old:
-                new_mailboxes.add(mailbox_id)
-            else:
-                old_mailboxes.add(mailbox_id)
-        log.msg(" 2: mailboxes:", new_mailboxes, old_mailboxes)
+            new_mailboxes = set()
+            old_mailboxes = set()
+            for row in store.get_mailboxes(self._app_id):
+                mailbox_id = row["id"]
+                log.msg(f"  1: age={now - row['updated']}, old={now - old}, {mailbox_id}")
+                if row["updated"] > old:
+                    new_mailboxes.add(mailbox_id)
+                else:
+                    old_mailboxes.add(mailbox_id)
+            log.msg(" 2: mailboxes:", new_mailboxes, old_mailboxes)
 
-        old_nameplates = set()
-        for row in store.get_nameplates(self._app_id):
-            npid = row["id"]
-            mailbox_id = row["mailbox_id"]
-            if mailbox_id in old_mailboxes:
-                old_nameplates.add(npid)
-        log.msg(" 3: old_nameplates dbids", old_nameplates)
+            old_nameplates = set()
+            for row in store.get_nameplates(self._app_id):
+                npid = row["id"]
+                mailbox_id = row["mailbox_id"]
+                if mailbox_id in old_mailboxes:
+                    old_nameplates.add(npid)
+            log.msg(" 3: old_nameplates dbids", old_nameplates)
 
-        for npid in old_nameplates:
-            log.msg("  deleting nameplate with dbid", npid)
-            side_rows = store.get_nameplate_sides(npid)
-            store.delete_nameplate_sides(npid)
-            store.delete_nameplate(npid)
-            if self._usage_store:
-                self._summarize_nameplate_and_store(side_rows, now, pruned=True)
-            modified = True
+            for npid in old_nameplates:
+                log.msg("  deleting nameplate with dbid", npid)
+                side_rows = store.get_nameplate_sides(npid)
+                store.delete_nameplate_sides(npid)
+                store.delete_nameplate(npid)
+                if self._usage_store:
+                    with self._usage_store.transaction():
+                        self._summarize_nameplate_and_store(
+                            side_rows, now, pruned=True)
+                modified = True
 
-        # delete all messages for old mailboxes
-        # delete all old mailboxes
+            # delete all messages for old mailboxes
+            # delete all old mailboxes
 
-        for mailbox_id in old_mailboxes:
-            log.msg("  deleting mailbox", mailbox_id)
-            row = store.get_mailbox_by_id(mailbox_id)
-            for_nameplate = row["for_nameplate"]
-            side_rows = store.get_mailbox_sides(mailbox_id)
-            store.delete_messages(mailbox_id)
-            store.delete_mailbox_sides(mailbox_id)
-            store.delete_mailbox(mailbox_id)
-            if self._usage_store:
-                self._summarize_mailbox_and_store(for_nameplate, side_rows,
-                                                  now, pruned=True)
-            modified = True
+            for mailbox_id in old_mailboxes:
+                log.msg("  deleting mailbox", mailbox_id)
+                row = store.get_mailbox_by_id(mailbox_id)
+                for_nameplate = row["for_nameplate"]
+                side_rows = store.get_mailbox_sides(mailbox_id)
+                store.delete_messages(mailbox_id)
+                store.delete_mailbox_sides(mailbox_id)
+                store.delete_mailbox(mailbox_id)
+                if self._usage_store:
+                    with self._usage_store.transaction():
+                        self._summarize_mailbox_and_store(
+                            for_nameplate, side_rows, now, pruned=True)
+                modified = True
 
-        if modified:
-            store.commit()
-            if self._usage_store:
-                self._usage_store.commit()
         in_use = bool(self._mailboxes)
         log.msg(f"  prune complete, modified={modified}, in_use={in_use}")
         return in_use
@@ -568,9 +578,9 @@ class Server(service.MultiService):
         # have non-websocket connections yet, but when we add them, this needs
         # to be updated. Probably by asking the WebSocketServerFactory to count
         # them.
-        self._usage_store.replace_current(rebooted, now, self._blur_usage,
-                                          connections)
-        self._usage_store.commit()
+        with self._usage_store.transaction():
+            self._usage_store.replace_current(
+                rebooted, now, self._blur_usage, connections)
 
         # current status: expected to be zero most of the time
         #c["nameplates_total"] = q("SELECT COUNT() FROM `nameplates`")

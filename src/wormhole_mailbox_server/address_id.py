@@ -19,29 +19,29 @@ class AddressIDTracker(object):
                     # but don't let the new generation end early
                     next_started = now
             next_generation = row["generation"] + 1 if row else 1
-            db.replace_addrid_generation(next_generation, next_started)
-            db.commit()
-            self._addrid_store.clear()
-            self._addrid_store.commit()
+            with db.transaction():
+                db.replace_addrid_generation(next_generation, next_started)
+            with self._addrid_store.transaction():
+                self._addrid_store.clear()
 
     def get_id(self, addr_type, addr): # -> (generation, counter)
         # we should only record one generation at a time, so there
         # shouldn't be more than one match
-        row = self._addrid_store.get_address_id(addr_type, addr)
-        if row:
-            return (row["generation"], row["counter"])
-        # else allocate and insert
+        with self._addrid_store.transaction():
+            row = self._addrid_store.get_address_id(addr_type, addr)
+            if row:
+                return (row["generation"], row["counter"])
+            # else allocate and insert
 
-        current = self._channel_store.get_addrid_generation()
-        assert current
-        generation = current["generation"]
-        top_row = self._addrid_store.get_max_counter(generation)
-        counter = top_row["counter"]+1 if top_row else 1
-        self._addrid_store.insert_address_id(generation, counter,
-                                             addr_type, address=addr)
-        self._addrid_store.commit()
-        address_id = (generation, counter)
-        return address_id
+            current = self._channel_store.get_addrid_generation()
+            assert current
+            generation = current["generation"]
+            top_row = self._addrid_store.get_max_counter(generation)
+            counter = top_row["counter"]+1 if top_row else 1
+            self._addrid_store.insert_address_id(generation, counter,
+                                                 addr_type, address=addr)
+            address_id = (generation, counter)
+            return address_id
 
     def get_address(self, address_id):
         (generation, counter) = address_id

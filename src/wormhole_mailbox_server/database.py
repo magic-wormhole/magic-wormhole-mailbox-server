@@ -53,7 +53,8 @@ def _make_engine(dbfile):
             connect_args={"check_same_thread": False},
         )
     else:
-        engine = create_engine("sqlite:///" + os.path.abspath(dbfile))
+        engine = create_engine("sqlite:///" + os.path.abspath(dbfile),
+                               connect_args={"timeout": 30})
 
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragma(dbapi_connection, connection_record):

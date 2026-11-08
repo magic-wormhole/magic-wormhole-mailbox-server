@@ -96,7 +96,44 @@ summaries, insert mailbox summaries, replace the single `current` row.
 `AddressIDStore` (address-id DB): clear, lookup by `(type, address)`,
 max counter per generation, insert, lookup by `(generation, counter)`.
 
-## Commit points / transactions (current behavior)
+## Commit points / transactions (after step 3)
+
+Each store has a re-entrant `transaction()` scope. Nested scopes (including
+across store instances sharing a connection) join the outermost transaction,
+which commits on success and rolls back on error. Protocol methods declare
+their own scopes, so partial writes are no longer committed mid-operation.
+
+* `Mailbox.open()` is one transaction.
+* `Mailbox.add_message()` is one transaction (message insert + mailbox
+  touch).
+* `Mailbox.close()` commits the channel state in one transaction, then
+  writes usage in a separate usage-DB transaction.
+* `AppNamespace.claim_nameplate()` commits nameplate/side creation in one
+  transaction, then opens the mailbox in a second transaction. A crowded
+  claim intentionally commits the offending side rows before raising, so
+  the channel can still be summarized as `crowded` (matching the historical
+  behavior).
+* `AppNamespace.release_nameplate()` updates and deletes in one channel
+  transaction, then writes usage separately.
+* `AppNamespace.prune()` touches listeners, reads, and deletes in one
+  channel transaction; usage writes are separate per retired record.
+* `ConnectionTable`/`Connection` and `AddressIDTracker` wrap each logical
+  write in a transaction. Address-id allocation keeps its read+insert in
+  one address-id transaction.
+* Transactions are never held open across network activity.
+
+## Ordering
+
+* `messages` has an autoincrement `id` primary key, and replay ordering is
+  explicit: `ORDER BY server_rx ASC, id ASC`. Ties on `server_rx` are
+  resolved by insertion order, not by SQLite rowid.
+* The channel DB target version is now 3; `upgrade-channel-to-v3.sql`
+  rebuilds `messages` and copies rows in rowid order so existing deployments
+  keep their old replay order.
+* `test_store.py` covers same-timestamp ordering, reconnects, and concurrent
+  inserts from two separate SQLite connections.
+
+## Old commit points (before step 3)
 
 This is intentionally unchanged in step 1 and is the main thing to tighten
 in step 3.
@@ -117,14 +154,12 @@ in step 3.
 * `AddressIDTracker.check_generation()` commits the channel generation and
   the address-id clear separately; `get_id()` commits the new counter.
 
-## Ordering
+## Old ordering (before step 3)
 
-* Message replay ordering is explicit: `ORDER BY server_rx ASC` in
+* Message replay ordering was `ORDER BY server_rx ASC` in
   `MailboxStore.get_messages()`. `server_rx` is supplied by the caller and
-  is not necessarily unique; ties are currently resolved by whatever order
-  SQLite returns. Step 3 should add a stable tie-breaker (e.g. an
-  autoincrement message id) without changing observable ordering for
-  existing data.
+  is not necessarily unique, so ties were resolved by whatever order SQLite
+  returned (implicit rowid order).
 * Mailbox and nameplate side ordering is only used for summaries, where
   `added` timestamps are sorted in Python.
 

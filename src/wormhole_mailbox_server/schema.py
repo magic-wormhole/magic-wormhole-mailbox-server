@@ -67,6 +67,7 @@ mailbox_sides = Table(
 
 messages = Table(
     "messages", channel_metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
     Column("app_id", String),
     Column("mailbox_id", String),
     Column("side", String),
@@ -176,7 +177,7 @@ SCHEMAS = {
 }
 
 TARGET_VERSIONS = {
-    "channel": 2,
+    "channel": 3,
     "usage": 2,
     "addrid": 1,
 }

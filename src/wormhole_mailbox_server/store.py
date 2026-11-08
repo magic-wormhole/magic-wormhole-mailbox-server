@@ -19,6 +19,8 @@ same durability behavior as before.
 legacy tooling. New protocol code should use the named methods.
 """
 
+from contextlib import contextmanager
+
 from sqlalchemy import (Connection, Engine, delete, insert, select,
                         update)
 
@@ -62,6 +64,30 @@ class _Store:
         return self.connection is not None
 
     # -- transaction control ---------------------------------------------
+
+    @contextmanager
+    def transaction(self):
+        """Run a logical operation in one transaction.
+
+        Nested uses (including across store instances that share a
+        connection) join the outermost transaction, so protocol methods can
+        each declare their own scope without committing partway through a
+        larger operation.
+        """
+        info = self.connection.info
+        depth = info.get("wormhole_tx_depth", 0)
+        info["wormhole_tx_depth"] = depth + 1
+        try:
+            yield self
+        except Exception:
+            info["wormhole_tx_depth"] = depth
+            if depth == 0:
+                self.connection.rollback()
+            raise
+        else:
+            info["wormhole_tx_depth"] = depth
+            if depth == 0:
+                self.connection.commit()
 
     def commit(self):
         self.connection.commit()
@@ -239,7 +265,7 @@ class MailboxStore(_Store):
         rows = self.connection.execute(
             select(t)
             .where(t.c.app_id == app_id, t.c.mailbox_id == mailbox_id)
-            .order_by(t.c.server_rx.asc())
+            .order_by(t.c.server_rx.asc(), t.c.id.asc())
         ).mappings().all()
         return [dict(row) for row in rows]
 

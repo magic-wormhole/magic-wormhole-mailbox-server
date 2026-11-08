@@ -32,6 +32,21 @@ def schema_signature(db):
         }
     return signature
 
+def schema_shape(db):
+    """Return table/column/index names, ignoring legacy type/nullability
+    differences between the historical SQL DDL and Core metadata."""
+    signature = schema_signature(db)
+    return {
+        table: {
+            "columns": [column[0] for column in info["columns"]],
+            "primary_key": info["primary_key"],
+            "indexes": [(name, columns) for name, columns, unique
+                        in info["indexes"]],
+        }
+        for table, info in signature.items()
+    }
+
+
 class Get(unittest.TestCase):
     def test_create_default(self):
         db_url = ":memory:"
@@ -81,6 +96,36 @@ class Get(unittest.TestCase):
         self.assertRaises(Exception, lambda: _get_db(dbfile.path))
         patch.restore()
         _get_db(dbfile.path, "channel", CHANNELDB_TARGET_VERSION)
+
+    def test_channel_upgrade_adds_message_ids(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "channel.db")
+
+        # Build a v2 database with messages, including ties on server_rx.
+        db = _get_db(fn, "channel", 2)
+        db.execute("INSERT INTO `mailboxes`"
+                   " (`app_id`, `id`, `for_nameplate`, `updated`)"
+                   " VALUES(?,?,?,?)", ("appid", "mid", True, 0))
+        for body, rx in (("a", 5), ("b", 5), ("c", 4)):
+            db.execute("INSERT INTO `messages`"
+                       " (`app_id`, `mailbox_id`, `side`, `phase`, `body`,"
+                       "  `server_rx`, `msg_id`)"
+                       " VALUES(?,?,?,?,?,?,?)",
+                       ("appid", "mid", "side", "p", body, rx, "m"))
+        db.commit()
+        del db
+
+        upgraded = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
+        rows = upgraded.get_messages("appid", "mid")
+        self.assertEqual([row["body"] for row in rows], ["c", "a", "b"])
+        # Within a shared server_rx, the explicit id is the tie-breaker.
+        ties = [row["id"] for row in rows if row["server_rx"] == 5]
+        self.assertEqual(ties, sorted(ties))
+        self.assertEqual(sorted(row["id"] for row in rows), [1, 2, 3])
+
+        fresh = _get_db(":memory:", "channel", CHANNELDB_TARGET_VERSION)
+        self.assertEqual(schema_shape(fresh), schema_shape(upgraded))
 
     def test_upgrade(self):
         basedir = self.mktemp()
