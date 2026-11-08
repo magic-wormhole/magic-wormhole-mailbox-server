@@ -44,6 +44,16 @@ fresh databases agree.
   or a SQLAlchemy URL containing `://`. SQLite still gets the
   `foreign_keys` pragma and file-based atomic creation; other dialects skip
   SQLite-only checks.
+* Migration execution is serialized **per database**, not per process, so
+  multiple server processes can share one database safely. PostgreSQL uses
+  `pg_advisory_lock`, MySQL/MariaDB use `GET_LOCK`, and SQLite uses an
+  exclusive lock on `<database>.migration-lock`. Every process re-checks
+  the Alembic revision after acquiring the lock, so only one performs the
+  upgrade.
+* Revision scripts take an explicit `Operations` object and are applied by
+  a small in-package runner instead of the `alembic` CLI. This avoids
+  Alembic's process-global `op` proxy, so migrations for different
+  databases can run concurrently within one process.
 * `test_dialects.py` runs the same channel round-trip against
   `WORMHOLE_TEST_DATABASE_URL` when it is set, and is skipped otherwise.
 

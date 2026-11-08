@@ -5,7 +5,6 @@ Revises:
 Create Date: 2026-11-08
 """
 
-from alembic import op
 import sqlalchemy as sa
 
 
@@ -15,7 +14,7 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
+def upgrade(op):
     op.create_table(
         "mailboxes",
         sa.Column("app_id", sa.String()),
@@ -99,7 +98,7 @@ def upgrade():
     )
 
 
-def downgrade():
+def downgrade(op):
     op.drop_table("connection_messages")
     op.drop_table("connections")
     op.drop_table("addrid_generation")

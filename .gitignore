@@ -62,3 +62,5 @@ target/
 # Virtual environment stuff
 venv/
 /src/twisted/plugins/dropin.cache
+/relay.sqlite.migration-lock
+/usage.sqlite.migration-lock

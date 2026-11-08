@@ -102,10 +102,12 @@ SQLite remains the default: `--channel-db` accepts a filename (or
 The three databases can also be pointed at any SQLAlchemy URL containing
 `://` (for example `postgresql://user:pass@host/dbname`).
 
-Schema changes are applied with Alembic at startup. Existing SQLite
-databases created with older releases are upgraded through the legacy
-versioned SQL scripts, backed up first, and then stamped into the Alembic
-revision history.
+Schema changes are applied with Alembic at startup. Migration execution is
+serialized per database (advisory locks on PostgreSQL/MySQL, a lock file
+for SQLite), so multiple server processes can share the same database.
+Existing SQLite databases created with older releases are upgraded through
+the legacy versioned SQL scripts, backed up first, and then stamped into the
+Alembic revision history.
 
 ## License, Compatibility
 

@@ -5,7 +5,6 @@ Revises:
 Create Date: 2026-11-08
 """
 
-from alembic import op
 import sqlalchemy as sa
 
 
@@ -15,7 +14,7 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
+def upgrade(op):
     op.create_table(
         "current",
         sa.Column("rebooted", sa.Integer()),
@@ -60,7 +59,7 @@ def upgrade():
                     ["app_id", "connect_time"])
 
 
-def downgrade():
+def downgrade(op):
     op.drop_index("client_versions_appid_time_idx",
                   table_name="client_versions")
     op.drop_index("client_versions_time_idx", table_name="client_versions")

@@ -31,8 +31,6 @@ setup(name="magic-wormhole-mailbox-server",
                 ],
       package_data={"wormhole_mailbox_server": [
           "db-schemas/*.sql",
-          "migrations/*.py",
-          "migrations/*.mako",
           "migrations/README",
           "migrations/versions/*.py",
       ]},

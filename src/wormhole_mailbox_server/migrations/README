@@ -10,11 +10,32 @@ Each lineage has its own Alembic version table
 (`alembic_version_channel`, `alembic_version_usage`,
 `alembic_version_addrid`), because the server keeps the databases separate.
 
-The server runs the appropriate head automatically on startup. Existing
-databases created before Alembic used an integer `version` table and the
-SQL scripts in `../db-schemas/`; those are upgraded to the initial Alembic
-revision and stamped before normal migration runs.
+The server applies the appropriate head automatically on startup. Revisions
+are applied with Alembic's `MigrationContext`/`Operations` API, but the
+module-level `alembic.op` proxy is not used; revision modules take an
+`Operations` object explicitly:
+
+```python
+def upgrade(op):
+    op.create_table(...)
+
+def downgrade(op):
+    op.drop_table(...)
+```
+
+This avoids Alembic's process-global operation proxy, so different databases
+can migrate concurrently in one process.
+
+Migrations are serialized across processes that share a database:
+PostgreSQL uses `pg_advisory_lock`, MySQL/MariaDB use `GET_LOCK`, and SQLite
+uses an exclusive lock on `<database>.migration-lock`. In-memory SQLite
+databases are process-private and need no lock.
+
+Existing databases created before Alembic used an integer `version` table
+and the SQL scripts in `../db-schemas/`; those are upgraded to the initial
+Alembic revision and stamped before normal migration runs.
 
 To add a migration, create a revision by hand using the existing naming
-scheme (for example `channel_0002_add_something`) and set
-`down_revision = "channel_0001"`.
+scheme (for example `channel_0002_add_something`), set
+`down_revision = "channel_0001"`, and update `MIGRATION_HEADS` in
+`database.py`.

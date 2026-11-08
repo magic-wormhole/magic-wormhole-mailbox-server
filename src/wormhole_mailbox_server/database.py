@@ -1,16 +1,23 @@
 import importlib.resources
+import hashlib
 import os, shutil
 import sqlite3
 import tempfile
-import threading
+from contextlib import contextmanager
 
-from alembic import command
-from alembic.config import Config
 from alembic.migration import MigrationContext
-from sqlalchemy import create_engine, event, inspect
+from alembic.operations import Operations
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import StaticPool
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None
+    import msvcrt
 
 from twisted.python import log
 
@@ -61,10 +68,6 @@ _VERSION_TABLES = {
     "usage": "alembic_version_usage",
     "addrid": "alembic_version_addrid",
 }
-
-# Alembic's operation proxy is process-global, so migrations must not run
-# concurrently even when separate threads open separate databases.
-_MIGRATION_LOCK = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -230,31 +233,160 @@ def _get_db(dbfile, name, target_version):
 
 
 # ---------------------------------------------------------------------------
-# Alembic migrations
+# database-scoped migration locking
+#
+# Migrations must be serialized across processes that share a database, not
+# just across threads in one process. PostgreSQL and MySQL use advisory
+# locks; SQLite (which has no advisory locks) is locked through a file
+# associated with the database file. In-memory SQLite databases are not
+# shared between processes, so no lock is needed.
 # ---------------------------------------------------------------------------
 
-def _migration_config(script_location):
-    config = Config()
-    config.set_main_option("script_location", str(script_location))
-    return config
+def _lock_identity(engine, name):
+    database = engine.url.database or ""
+    return f"wormhole_mailbox_server:{database}:{name}"
 
 
-def _run_migrations(engine, name, revision, operation=command.upgrade):
+@contextmanager
+def _sqlite_migration_lock(engine):
+    database = engine.url.database
+    if not database or database == ":memory:":
+        yield
+        return
+    lock_path = database + ".migration-lock"
+    lock_file = open(lock_path, "a+b")
+    try:
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        else:  # pragma: no cover - Windows
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+        yield
+    finally:
+        try:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            else:  # pragma: no cover - Windows
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        finally:
+            lock_file.close()
+
+
+@contextmanager
+def _advisory_migration_lock(engine, name, dialect):
+    identity = _lock_identity(engine, name)
+    digest = hashlib.sha256(identity.encode("utf-8")).digest()
+    key = None
+    lock_name = None
+    lock_conn = engine.connect()
+    try:
+        if dialect == "postgresql":
+            key = int.from_bytes(digest[:8], "big", signed=True)
+            lock_conn.execute(text("SELECT pg_advisory_lock(:key)"),
+                              {"key": key})
+        else:  # mysql / mariadb
+            lock_name = "wm:" + digest.hex()[:60]
+            got = lock_conn.execute(
+                text("SELECT GET_LOCK(:name, :timeout)"),
+                {"name": lock_name, "timeout": 300}).scalar()
+            if got != 1:
+                raise DBError(f"timed out acquiring migration lock for {name}")
+        lock_conn.commit()
+        yield
+    finally:
+        try:
+            if dialect == "postgresql" and key is not None:
+                lock_conn.execute(text("SELECT pg_advisory_unlock(:key)"),
+                                  {"key": key})
+            elif lock_name is not None:
+                lock_conn.execute(text("SELECT RELEASE_LOCK(:name)"),
+                                  {"name": lock_name})
+        finally:
+            lock_conn.close()
+
+
+@contextmanager
+def _migration_lock(engine, name):
+    dialect = engine.dialect.name
+    if dialect == "sqlite":
+        with _sqlite_migration_lock(engine):
+            yield
+    elif dialect == "postgresql":
+        with _advisory_migration_lock(engine, name, dialect):
+            yield
+    elif dialect in ("mysql", "mariadb"):
+        with _advisory_migration_lock(engine, name, dialect):
+            yield
+    else:
+        raise DBError(
+            f"no database migration lock implemented for dialect {dialect}")
+
+
+# ---------------------------------------------------------------------------
+# Alembic migrations
+#
+# We use Alembic's revision scripts and Operations API, but apply revisions
+# ourselves so the module-level ``alembic.op`` proxy (which is global to the
+# process) is never involved. That makes concurrent migrations on different
+# databases safe within one process.
+# ---------------------------------------------------------------------------
+
+def _script_directory():
     resource = importlib.resources.files(
         "wormhole_mailbox_server").joinpath("migrations")
-    with importlib.resources.as_file(resource) as script_location:
-        config = _migration_config(script_location)
-        config.attributes["version_table"] = _VERSION_TABLES[name]
+    return importlib.resources.as_file(resource)
+
+
+def _pending_revisions(script, head, current):
+    revisions = []
+    revision = script.get_revision(head)
+    while revision is not None:
+        if revision.revision == current:
+            break
+        revisions.append(revision)
+        down = revision.down_revision
+        revision = script.get_revision(down) if down else None
+    else:
+        if current is not None:
+            raise DBError(
+                f"current revision {current!r} is not an ancestor of {head!r}")
+    revisions.reverse()
+    return revisions
+
+
+def _run_migrations(engine, name, head):
+    with _script_directory() as script_location:
+        script = ScriptDirectory(str(script_location))
         with engine.connect() as conn:
-            config.attributes["connection"] = conn
-            operation(config, revision)
+            context = MigrationContext.configure(
+                conn, opts={"version_table": _VERSION_TABLES[name]})
+            current = context.get_current_revision()
+            conn.commit()
+            for revision in _pending_revisions(script, head, current):
+                log.msg(f" applying {name} migration {revision.revision}")
+                with conn.begin():
+                    revision.module.upgrade(Operations(context))
+                    context.stamp(script, revision.revision)
+
+
+def _stamp(engine, name, revision):
+    with _script_directory() as script_location:
+        script = ScriptDirectory(str(script_location))
+        with engine.connect() as conn:
+            context = MigrationContext.configure(
+                conn, opts={"version_table": _VERSION_TABLES[name]})
+            with conn.begin():
+                context.stamp(script, revision)
 
 
 def _alembic_version(engine, name):
     with engine.connect() as conn:
         context = MigrationContext.configure(
             conn, opts={"version_table": _VERSION_TABLES[name]})
-        return context.get_current_revision()
+        current = context.get_current_revision()
+        conn.commit()
+    return current
 
 
 def _ensure_schema(engine, name, dbfile):
@@ -264,29 +396,14 @@ def _ensure_schema(engine, name, dbfile):
     Alembic are first upgraded through the legacy integer-versioned
     scripts, then stamped at the initial Alembic revision.
     """
-    with _MIGRATION_LOCK:
-        return _ensure_schema_locked(engine, name, dbfile)
-
-
-def _ensure_schema_locked(engine, name, dbfile):
     try:
-        if _alembic_version(engine, name) is None:
-            legacy = _legacy_version(engine)
-            if legacy is not None:
-                target = TARGET_VERSIONS[name]
-                if legacy > target:
-                    raise DBError(f"Unable to handle db version {legacy}")
-                if legacy < target:
-                    if dbfile != ":memory:" and not _is_url(dbfile):
-                        backup_fn = "%s-backup-v%d" % (dbfile, legacy)
-                        log.msg(" storing backup of v%d db in %s"
-                                % (legacy, backup_fn))
-                        shutil.copy(dbfile, backup_fn)
-                    _upgrade_legacy_db(engine, name, legacy, target)
-                log.msg(f"stamping {name} database at {_INITIAL_REVISIONS[name]}")
-                _run_migrations(engine, name, _INITIAL_REVISIONS[name],
-                                operation=command.stamp)
-        _run_migrations(engine, name, MIGRATION_HEADS[name])
+        if _alembic_version(engine, name) == MIGRATION_HEADS[name]:
+            return
+        with _migration_lock(engine, name):
+            # Re-check under the database lock; another process may have
+            # completed the migration while we waited.
+            if _alembic_version(engine, name) != MIGRATION_HEADS[name]:
+                _migrate_schema(engine, name, dbfile)
     except DBError:
         raise
     except (OSError, sqlite3.OperationalError, sqlite3.DatabaseError,
@@ -294,30 +411,38 @@ def _ensure_schema_locked(engine, name, dbfile):
         raise DBError(f"Unable to migrate db file {dbfile}: {e}")
 
 
-def _atomic_create_store(dbfile, name):
-    temp_dbfile = _get_temporary_dbfile(dbfile)
-    try:
-        engine = _make_engine(temp_dbfile)
-        _ensure_schema(engine, name, temp_dbfile)
-        engine.dispose()
-        os.rename(temp_dbfile, dbfile)
-    except Exception:
-        if os.path.exists(temp_dbfile):
-            os.remove(temp_dbfile)
-        raise
-    return _make_engine(dbfile)
+def _migrate_schema(engine, name, dbfile):
+    if _alembic_version(engine, name) is None:
+        legacy = _legacy_version(engine)
+        if legacy is not None:
+            target = TARGET_VERSIONS[name]
+            if legacy > target:
+                raise DBError(f"Unable to handle db version {legacy}")
+            if legacy < target:
+                if dbfile != ":memory:" and not _is_url(dbfile):
+                    backup_fn = "%s-backup-v%d" % (dbfile, legacy)
+                    log.msg(" storing backup of v%d db in %s"
+                            % (legacy, backup_fn))
+                    shutil.copy(dbfile, backup_fn)
+                _upgrade_legacy_db(engine, name, legacy, target)
+            log.msg(f"stamping {name} database at {_INITIAL_REVISIONS[name]}")
+            _stamp(engine, name, _INITIAL_REVISIONS[name])
+    _run_migrations(engine, name, MIGRATION_HEADS[name])
 
 
 def _open_store(dbfile, name):
     try:
-        if _is_url(dbfile) or dbfile == ":memory:":
-            engine = _make_engine(dbfile)
+        engine = _make_engine(dbfile)
+        try:
             _ensure_schema(engine, name, dbfile)
-        elif os.path.exists(dbfile):
-            engine = _make_engine(dbfile)
-            _ensure_schema(engine, name, dbfile)
-        else:
-            engine = _atomic_create_store(dbfile, name)
+        except Exception:
+            engine.dispose()
+            # Leave no half-migrated database behind. The migration lock is
+            # held while this runs, so no other process can be using it.
+            if not (_is_url(dbfile) or dbfile == ":memory:"):
+                if os.path.exists(dbfile):
+                    os.remove(dbfile)
+            raise
         _check_foreign_keys(engine)
     except DBError:
         raise

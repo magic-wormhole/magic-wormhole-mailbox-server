@@ -45,6 +45,39 @@ class MessageOrdering(unittest.TestCase):
                          ["first", "second"])
 
 
+class ConcurrentSchemaCreation(unittest.TestCase):
+    def test_separate_processes_share_one_migration(self):
+        # Simulate two processes starting at once against a fresh database.
+        # The database-level lock plus the post-lock re-check must leave one
+        # valid schema and no errors.
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "new.db")
+
+        barrier = threading.Barrier(2, timeout=30)
+        errors = []
+        stores = []
+
+        def worker():
+            try:
+                barrier.wait()
+                stores.append(create_or_upgrade_channel_db(fn))
+            except Exception as e: # pragma: no cover - reported below
+                errors.append(e)
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(60)
+        self.assertEqual([t for t in threads if t.is_alive()], [])
+        self.assertEqual(errors, [])
+        self.assertEqual(len(stores), 2)
+        for store in stores:
+            self.assertEqual(store.get_app_ids(), set())
+            self.assertTrue(os.path.exists(fn + ".migration-lock"))
+
+
 class ConcurrentInserts(unittest.TestCase):
     def test_separate_connections(self):
         basedir = self.mktemp()
