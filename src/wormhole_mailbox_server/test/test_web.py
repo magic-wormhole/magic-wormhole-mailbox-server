@@ -300,7 +300,7 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
 
         # claiming a nameplate assigns a random mailbox id and creates the
         # mailbox row
-        mailboxes = app._db.execute("SELECT * FROM `mailboxes`"
+        mailboxes = app._store.connection.execute("SELECT * FROM `mailboxes`"
                                     " WHERE `app_id`='appid'").fetchall()
         self.assertEqual(len(mailboxes), 1)
 
