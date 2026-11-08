@@ -1,10 +1,12 @@
+import os
 from unittest import mock
 from twisted.trial import unittest
 from twisted.python import log
 from .common import ServerBase, _Util
 from ..server import (make_server, Usage,
                       SidedMessage, CrowdedError, AppNamespace)
-from ..database import create_channel_db, create_usage_db
+from ..database import (create_channel_db, create_or_upgrade_channel_db,
+                        create_usage_db)
 
 npid = "1"
 
@@ -650,6 +652,32 @@ class MakeServer(unittest.TestCase):
                 "motd": "hello world",
             }
         )
+
+class SessionPersistence(unittest.TestCase):
+    def test_restart_replays_session(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "relay.db")
+
+        server = make_server(create_channel_db(fn))
+        app = server.get_app("appid")
+        name = "12345"
+        mailbox_id = app.claim_nameplate(name, "side1", 0)
+        mailbox = app.open_mailbox(mailbox_id, "side1", 0)
+        mailbox.add_message(SidedMessage(
+            side="side1", phase="p", body="persisted", server_rx=5,
+            msg_id="m1"))
+
+        # A second server opening the same database stands in for a process
+        # restart or a client reconnecting to another process.
+        restarted = make_server(create_or_upgrade_channel_db(fn))
+        app2 = restarted.get_app("appid")
+        self.assertEqual(app2.get_nameplate_ids(), {name})
+        self.assertEqual(app2.claim_nameplate(name, "side2", 10), mailbox_id)
+        reopened = app2.open_mailbox(mailbox_id, "side2", 10)
+        self.assertEqual([message.body for message in
+                          reopened.get_messages()], ["persisted"])
+
 
 # exercise _find_available_nameplate_id failing
 # exercise CrowdedError

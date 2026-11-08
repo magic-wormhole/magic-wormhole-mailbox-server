@@ -244,7 +244,8 @@ def _get_db(dbfile, name, target_version):
 
 def _lock_identity(engine, name):
     database = engine.url.database or ""
-    return f"wormhole_mailbox_server:{database}:{name}"
+    suffix = getattr(engine, "_wormhole_lock_suffix", "")
+    return f"wormhole_mailbox_server:{database}:{name}:{suffix}"
 
 
 @contextmanager

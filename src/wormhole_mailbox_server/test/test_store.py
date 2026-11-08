@@ -75,6 +75,7 @@ class ConcurrentSchemaCreation(unittest.TestCase):
         self.assertEqual(len(stores), 2)
         for store in stores:
             self.assertEqual(store.get_app_ids(), set())
+        if stores[0].engine.dialect.name == "sqlite":
             self.assertTrue(os.path.exists(fn + ".migration-lock"))
 
 

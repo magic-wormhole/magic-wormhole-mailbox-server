@@ -109,6 +109,10 @@ Existing SQLite databases created with older releases are upgraded through
 the legacy versioned SQL scripts, backed up first, and then stamped into the
 Alembic revision history.
 
+To run the unit suites against SQLite, MySQL, and PostgreSQL in parallel,
+followed by the three behavioral suites, use
+`misc/backends/test-backends.py` (see `misc/backends/README.md`).
+
 ## License, Compatibility
 
 This library is released under the MIT license, see LICENSE for details.

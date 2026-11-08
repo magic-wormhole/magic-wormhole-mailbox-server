@@ -6,6 +6,16 @@ from .. import database
 from ..database import (CHANNELDB_TARGET_VERSION, USAGEDB_TARGET_VERSION,
                         _get_db, dump_db, DBError)
 
+if os.environ.get("WORMHOLE_TEST_UNIT_BACKEND_URL"):
+    _SQLITE_ONLY_SKIP = (
+        "database schema/upgrade tests use SQLite-specific legacy files")
+else:
+    _SQLITE_ONLY_SKIP = None
+
+
+class SQLiteOnly(unittest.TestCase):
+    skip = _SQLITE_ONLY_SKIP
+
 
 def schema_signature(db):
     """Return a dialect-independent description of a database's schema."""
@@ -47,7 +57,7 @@ def schema_shape(db):
     }
 
 
-class Get(unittest.TestCase):
+class Get(SQLiteOnly):
     def test_create_default(self):
         db_url = ":memory:"
         db = _get_db(db_url, "channel", CHANNELDB_TARGET_VERSION)
@@ -208,7 +218,7 @@ class Get(unittest.TestCase):
         with self.assertRaises(DBError):
             _get_db(fn, "usage", USAGEDB_TARGET_VERSION+1)
 
-class Alembic(unittest.TestCase):
+class Alembic(SQLiteOnly):
     def test_fresh_database_is_stamped(self):
         db = database.create_channel_db(":memory:")
         self.assertEqual(database._alembic_version(db.engine, "channel"),
@@ -275,7 +285,7 @@ class Alembic(unittest.TestCase):
             database.create_or_upgrade_channel_db(fn)
 
 
-class CreateChannel(unittest.TestCase):
+class CreateChannel(SQLiteOnly):
     def test_memory(self):
         db = database.create_channel_db(":memory:")
         latest_text = dump_db(db)
@@ -306,7 +316,7 @@ class CreateChannel(unittest.TestCase):
         latest_text = dump_db(db)
         self.assertIn("CREATE TABLE", latest_text)
 
-class CreateUsage(unittest.TestCase):
+class CreateUsage(SQLiteOnly):
     def test_memory(self):
         db = database.create_usage_db(":memory:")
         latest_text = dump_db(db)
@@ -341,7 +351,7 @@ class CreateUsage(unittest.TestCase):
         db = database.create_or_upgrade_usage_db(None)
         self.assertIs(db, None)
 
-class OpenChannel(unittest.TestCase):
+class OpenChannel(SQLiteOnly):
     def test_open(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
@@ -359,7 +369,7 @@ class OpenChannel(unittest.TestCase):
         with self.assertRaises(database.DBDoesntExist):
             database.open_existing_db(fn)
 
-class OpenUsage(unittest.TestCase):
+class OpenUsage(SQLiteOnly):
     def test_open(self):
         basedir = self.mktemp()
         os.mkdir(basedir)

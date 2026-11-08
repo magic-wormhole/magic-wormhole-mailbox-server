@@ -101,8 +101,16 @@ class _Store:
         """Execute raw SQL against the underlying driver connection.
 
         This exists for tests and legacy tooling only; protocol code must
-        use the named methods below.
+        use the named methods below. SQLite-style backtick quoting and
+        ``?`` placeholders are translated for other dialects so the older
+        SQLite-oriented tests can also run against them.
         """
+        dialect = self.connection.dialect.name
+        if dialect == "postgresql":
+            sql = sql.replace("`", '"')
+            sql = sql.replace("?", "%s")
+        elif dialect in ("mysql", "mariadb"):
+            sql = sql.replace("?", "%s")
         return _Result(self.connection.exec_driver_sql(sql, params))
 
 

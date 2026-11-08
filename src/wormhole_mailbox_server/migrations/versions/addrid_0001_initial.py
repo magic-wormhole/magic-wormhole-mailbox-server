@@ -19,8 +19,8 @@ def upgrade(op):
         "address_ids",
         sa.Column("generation", sa.Integer()),
         sa.Column("counter", sa.Integer()),
-        sa.Column("type", sa.String()),
-        sa.Column("address", sa.String()),
+        sa.Column("type", sa.String(16)),
+        sa.Column("address", sa.String(255)),
         sa.Column("retain", sa.Integer()),
     )
 

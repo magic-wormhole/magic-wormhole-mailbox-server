@@ -1,17 +1,16 @@
 """SQLAlchemy Core schema definitions for the three databases.
 
-The logical schema is deliberately identical to the historical SQLite
-schema in ``db-schemas/``: same tables, columns, constraints, and indexes.
-Types are declared explicitly so the definitions are portable to other
-dialects, and the autoincrementing integer keys are kept for compatibility
-with existing databases.
+The logical schema matches the historical SQLite schema in ``db-schemas/``:
+same tables, columns, constraints, and indexes. Types are declared
+explicitly, including string lengths, so the same definitions compile on
+SQLite, PostgreSQL, and MySQL.
 
 The schema is split into three ``MetaData`` objects because the server uses
 three separate databases (channel, usage, and address-id).
 """
 
 from sqlalchemy import (Boolean, Column, ForeignKey, Index, Integer,
-                        MetaData, String, Table)
+                        MetaData, String, Table, Text)
 
 
 # -- channel database ----------------------------------------------------
@@ -21,10 +20,10 @@ channel_metadata = MetaData()
 nameplates = Table(
     "nameplates", channel_metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("app_id", String),
-    Column("name", String),
-    Column("mailbox_id", String, ForeignKey("mailboxes.id")),
-    Column("request_id", String),
+    Column("app_id", String(255)),
+    Column("name", String(255)),
+    Column("mailbox_id", String(64), ForeignKey("mailboxes.id")),
+    Column("request_id", String(255)),
 )
 Index("nameplates_idx", nameplates.c.app_id, nameplates.c.name)
 Index("nameplates_mailbox_idx", nameplates.c.app_id, nameplates.c.mailbox_id)
@@ -32,8 +31,8 @@ Index("nameplates_request_idx", nameplates.c.app_id, nameplates.c.request_id)
 
 mailboxes = Table(
     "mailboxes", channel_metadata,
-    Column("app_id", String),
-    Column("id", String, primary_key=True),
+    Column("app_id", String(255)),
+    Column("id", String(64), primary_key=True),
     Column("updated", Integer),
     Column("for_nameplate", Boolean),
 )
@@ -43,29 +42,29 @@ nameplate_sides = Table(
     "nameplate_sides", channel_metadata,
     Column("nameplates_id", Integer, ForeignKey("nameplates.id")),
     Column("claimed", Boolean),
-    Column("side", String),
+    Column("side", String(255)),
     Column("added", Integer),
 )
 
 mailbox_sides = Table(
     "mailbox_sides", channel_metadata,
-    Column("mailbox_id", String, ForeignKey("mailboxes.id")),
+    Column("mailbox_id", String(64), ForeignKey("mailboxes.id")),
     Column("opened", Boolean),
-    Column("side", String),
+    Column("side", String(255)),
     Column("added", Integer),
-    Column("mood", String),
+    Column("mood", String(64)),
 )
 
 messages = Table(
     "messages", channel_metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("app_id", String),
-    Column("mailbox_id", String),
-    Column("side", String),
-    Column("phase", String),
-    Column("body", String),
+    Column("app_id", String(255)),
+    Column("mailbox_id", String(64)),
+    Column("side", String(255)),
+    Column("phase", String(255)),
+    Column("body", Text()),
     Column("server_rx", Integer),
-    Column("msg_id", String),
+    Column("msg_id", String(255)),
 )
 Index("messages_idx", messages.c.app_id, messages.c.mailbox_id)
 
@@ -81,9 +80,9 @@ connections = Table(
     Column("addrid_generation", Integer),
     Column("addrid_counter", Integer),
     Column("connected", Integer),
-    Column("side", String),
-    Column("implementation", String),
-    Column("version", String),
+    Column("side", String(255)),
+    Column("implementation", String(255)),
+    Column("version", String(64)),
     Column("active", Integer),
 )
 
@@ -91,7 +90,7 @@ connection_messages = Table(
     "connection_messages", channel_metadata,
     Column("id", Integer, ForeignKey("connections.id")),
     Column("when", Integer),
-    Column("name", String),
+    Column("name", String(255)),
 )
 
 
@@ -109,34 +108,34 @@ current = Table(
 
 usage_nameplates = Table(
     "nameplates", usage_metadata,
-    Column("app_id", String),
+    Column("app_id", String(255)),
     Column("started", Integer),
     Column("waiting_time", Integer),
     Column("total_time", Integer),
-    Column("result", String),
+    Column("result", String(64)),
 )
 Index("nameplates_idx", usage_nameplates.c.app_id,
       usage_nameplates.c.started)
 
 usage_mailboxes = Table(
     "mailboxes", usage_metadata,
-    Column("app_id", String),
+    Column("app_id", String(255)),
     Column("for_nameplate", Boolean),
     Column("started", Integer),
     Column("total_time", Integer),
     Column("waiting_time", Integer),
-    Column("result", String),
+    Column("result", String(64)),
 )
 Index("mailboxes_idx", usage_mailboxes.c.app_id, usage_mailboxes.c.started)
 Index("mailboxes_result_idx", usage_mailboxes.c.result)
 
 client_versions = Table(
     "client_versions", usage_metadata,
-    Column("app_id", String),
-    Column("side", String),
+    Column("app_id", String(255)),
+    Column("side", String(255)),
     Column("connect_time", Integer),
-    Column("implementation", String),
-    Column("version", String),
+    Column("implementation", String(255)),
+    Column("version", String(64)),
 )
 Index("client_versions_time_idx", client_versions.c.connect_time)
 Index("client_versions_appid_time_idx", client_versions.c.app_id,
@@ -151,8 +150,8 @@ address_ids = Table(
     "address_ids", addrid_metadata,
     Column("generation", Integer),
     Column("counter", Integer),
-    Column("type", String),
-    Column("address", String),
+    Column("type", String(16)),
+    Column("address", String(255)),
     Column("retain", Integer),
 )
 

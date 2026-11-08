@@ -54,8 +54,20 @@ fresh databases agree.
   a small in-package runner instead of the `alembic` CLI. This avoids
   Alembic's process-global `op` proxy, so migrations for different
   databases can run concurrently within one process.
-* `test_dialects.py` runs the same channel round-trip against
-  `WORMHOLE_TEST_DATABASE_URL` when it is set, and is skipped otherwise.
+* `test_backends.py` runs a backend-agnostic behavioral suite
+  (claim/release, replay ordering, reconnect persistence, transactions,
+  concurrent inserts, connections, usage, address IDs, migrations). It is
+  driven by `WORMHOLE_TEST_CHANNEL_DATABASE_URL` (or
+  `WORMHOLE_TEST_DATABASE_URL`), `WORMHOLE_TEST_USAGE_DATABASE_URL`, and
+  `WORMHOLE_TEST_ADDRID_DATABASE_URL`, and skips without them.
+* `misc/backends/test-backends.py` starts separate MySQL and PostgreSQL
+  `docker compose` configurations (tmpfs-backed, so test databases are
+  RAM-only and discarded with the containers), creates fresh databases, and
+  runs the three unit suites in parallel first (SQLite, PostgreSQL, MySQL),
+  reporting each suite's status. It then runs the three behavioral suites in
+  parallel. Unit backends map each test's `:memory:` database to an isolated
+  PostgreSQL schema or MySQL database (`WORMHOLE_TEST_UNIT_BACKEND_URL`);
+  SQLite-specific schema/upgrade tests skip in those runs.
 
 ## Before step 1
 

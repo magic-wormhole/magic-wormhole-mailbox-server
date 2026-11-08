@@ -25,33 +25,33 @@ def upgrade(op):
 
     op.create_table(
         "nameplates",
-        sa.Column("app_id", sa.String()),
+        sa.Column("app_id", sa.String(255)),
         sa.Column("started", sa.Integer()),
         sa.Column("waiting_time", sa.Integer()),
         sa.Column("total_time", sa.Integer()),
-        sa.Column("result", sa.String()),
+        sa.Column("result", sa.String(64)),
     )
     op.create_index("nameplates_idx", "nameplates", ["app_id", "started"])
 
     op.create_table(
         "mailboxes",
-        sa.Column("app_id", sa.String()),
+        sa.Column("app_id", sa.String(255)),
         sa.Column("for_nameplate", sa.Boolean()),
         sa.Column("started", sa.Integer()),
         sa.Column("total_time", sa.Integer()),
         sa.Column("waiting_time", sa.Integer()),
-        sa.Column("result", sa.String()),
+        sa.Column("result", sa.String(64)),
     )
     op.create_index("mailboxes_idx", "mailboxes", ["app_id", "started"])
     op.create_index("mailboxes_result_idx", "mailboxes", ["result"])
 
     op.create_table(
         "client_versions",
-        sa.Column("app_id", sa.String()),
-        sa.Column("side", sa.String()),
+        sa.Column("app_id", sa.String(255)),
+        sa.Column("side", sa.String(255)),
         sa.Column("connect_time", sa.Integer()),
-        sa.Column("implementation", sa.String()),
-        sa.Column("version", sa.String()),
+        sa.Column("implementation", sa.String(255)),
+        sa.Column("version", sa.String(64)),
     )
     op.create_index("client_versions_time_idx", "client_versions",
                     ["connect_time"])
