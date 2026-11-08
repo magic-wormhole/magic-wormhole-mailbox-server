@@ -55,7 +55,7 @@ class ConcurrentInserts(unittest.TestCase):
         setup.insert_mailbox("appid", "mid", True, 0)
         setup.commit()
 
-        barrier = threading.Barrier(2)
+        barrier = threading.Barrier(2, timeout=30)
         errors = []
 
         def worker(side):
@@ -76,7 +76,8 @@ class ConcurrentInserts(unittest.TestCase):
         for thread in threads:
             thread.start()
         for thread in threads:
-            thread.join()
+            thread.join(60)
+        self.assertEqual([t for t in threads if t.is_alive()], [])
         self.assertEqual(errors, [])
 
         rows = setup.get_messages("appid", "mid")

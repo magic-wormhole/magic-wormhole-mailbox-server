@@ -127,6 +127,33 @@ class Get(unittest.TestCase):
         fresh = _get_db(":memory:", "channel", CHANNELDB_TARGET_VERSION)
         self.assertEqual(schema_shape(fresh), schema_shape(upgraded))
 
+    def test_channel_upgrade_from_v1_drops_unused_column(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "channel-v1.db")
+
+        db = _get_db(fn, "channel", 1)
+        db.execute("INSERT INTO `mailboxes`"
+                   " (`app_id`, `id`, `for_nameplate`, `updated`)"
+                   " VALUES(?,?,?,?)", ("appid", "mid", True, 0))
+        db.execute("INSERT INTO `messages`"
+                   " (`app_id`, `mailbox_id`, `side`, `phase`, `body`,"
+                   "  `server_rx`, `msg_id`)"
+                   " VALUES(?,?,?,?,?,?,?)",
+                   ("appid", "mid", "side", "p", "body", 5, "m"))
+        db.commit()
+        del db
+
+        upgraded = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
+        columns = [column["name"] for column in
+                   inspect(upgraded.engine).get_columns("addrid_generation")]
+        self.assertEqual(columns, ["generation", "started"])
+        self.assertEqual([row["body"] for row in
+                          upgraded.get_messages("appid", "mid")], ["body"])
+
+        fresh = _get_db(":memory:", "channel", CHANNELDB_TARGET_VERSION)
+        self.assertEqual(schema_shape(fresh), schema_shape(upgraded))
+
     def test_upgrade(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
@@ -180,6 +207,73 @@ class Get(unittest.TestCase):
         # upgrader
         with self.assertRaises(DBError):
             _get_db(fn, "usage", USAGEDB_TARGET_VERSION+1)
+
+class Alembic(unittest.TestCase):
+    def test_fresh_database_is_stamped(self):
+        db = database.create_channel_db(":memory:")
+        self.assertEqual(database._alembic_version(db.engine, "channel"),
+                         "channel_0001")
+        tables = inspect(db.engine).get_table_names()
+        self.assertIn("messages", tables)
+        self.assertNotIn("version", tables)
+
+    def test_legacy_channel_upgrade_is_stamped(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "legacy-channel.db")
+
+        legacy = _get_db(fn, "channel", 2)
+        legacy.execute("INSERT INTO `mailboxes`"
+                       " (`app_id`, `id`, `for_nameplate`, `updated`)"
+                       " VALUES(?,?,?,?)", ("appid", "mid", True, 0))
+        legacy.execute("INSERT INTO `messages`"
+                       " (`app_id`, `mailbox_id`, `side`, `phase`, `body`,"
+                       "  `server_rx`, `msg_id`)"
+                       " VALUES(?,?,?,?,?,?,?)",
+                       ("appid", "mid", "side", "p", "body", 5, "m"))
+        legacy.commit()
+        del legacy
+
+        db = database.create_or_upgrade_channel_db(fn)
+        self.assertEqual(database._alembic_version(db.engine, "channel"),
+                         "channel_0001")
+        self.assertEqual([row["body"] for row in
+                          db.get_messages("appid", "mid")], ["body"])
+        # Re-opening runs the migration path again without changing state.
+        db2 = database.create_or_upgrade_channel_db(fn)
+        self.assertEqual([row["body"] for row in
+                          db2.get_messages("appid", "mid")], ["body"])
+
+    def test_legacy_usage_upgrade_is_stamped(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "legacy-usage.db")
+
+        legacy = _get_db(fn, "usage", 1)
+        legacy.execute("INSERT INTO `nameplates`"
+                       " (`app_id`, `started`, `waiting_time`,"
+                       "  `total_time`, `result`)"
+                       " VALUES(?,?,?,?,?)",
+                       ("appid", 1, 1, 2, "happy"))
+        legacy.commit()
+        del legacy
+
+        db = database.create_or_upgrade_usage_db(fn)
+        self.assertEqual(database._alembic_version(db.engine, "usage"),
+                         "usage_0001")
+        rows = db.execute("SELECT * FROM `nameplates`").fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["result"], "happy")
+
+    def test_corrupt_database(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "corrupt.db")
+        with open(fn, "wb") as f:
+            f.write(b"I am not a database")
+        with self.assertRaises(DBError):
+            database.create_or_upgrade_channel_db(fn)
+
 
 class CreateChannel(unittest.TestCase):
     def test_memory(self):

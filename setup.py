@@ -29,13 +29,20 @@ setup(name="magic-wormhole-mailbox-server",
                 "wormhole_mailbox_server.test",
                 "twisted.plugins",
                 ],
-      package_data={"wormhole_mailbox_server": ["db-schemas/*.sql"]},
+      package_data={"wormhole_mailbox_server": [
+          "db-schemas/*.sql",
+          "migrations/*.py",
+          "migrations/*.mako",
+          "migrations/README",
+          "migrations/versions/*.py",
+      ]},
       install_requires=[
           "attrs >= 16.3.0", # 16.3.0 adds __attrs_post_init__
           "twisted[tls] >= 17.5.0",
           "autobahn[twisted] >= 0.14.1",
           "setuptools", # pkg_resources
           "SQLAlchemy >= 2.0",
+          "alembic >= 1.13",
       ],
       extras_require={
           ':sys_platform=="win32"': ["pywin32"],

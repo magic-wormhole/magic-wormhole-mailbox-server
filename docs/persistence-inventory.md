@@ -18,11 +18,34 @@ Schema and ordinary reads/writes now go through SQLAlchemy Core:
   protocol code no longer uses it.
 * `dump_db()` unwraps a store to the driver connection for `iterdump()`.
 
-Known legacy inconsistency to resolve in the migration step:
-`channel-v2.sql` (and therefore fresh Core databases) has
-`addrid_generation(generation, started)`, while
-`upgrade-channel-to-v2.sql` adds an unused `ends` column. Alembic should
-produce the same shape as the fresh schema.
+Known legacy inconsistency, resolved in step 4: `channel-v2.sql` (and
+therefore fresh Core databases) has `addrid_generation(generation, started)`,
+while `upgrade-channel-to-v2.sql` adds an unused `ends` column. The v2->v3
+upgrade now rebuilds `addrid_generation` without `ends`, so upgraded and
+fresh databases agree.
+
+## After step 4
+
+* Alembic is the runtime migration mechanism, with one independent lineage
+  and version table per database:
+  `channel_0001` / `alembic_version_channel`,
+  `usage_0001` / `alembic_version_usage`,
+  `addrid_0001` / `alembic_version_addrid`. Migration scripts ship inside
+  the package (`src/wormhole_mailbox_server/migrations/`).
+* Fresh databases are created by Alembic. Pre-Alembic databases are
+  detected by their integer `version` table, upgraded to the latest legacy
+  schema (channel 3, usage 2, addrid 1) with the existing SQL scripts, then
+  stamped at the corresponding initial Alembic revision. A backup copy is
+  still written before a legacy upgrade.
+* `_get_db()` and the `db-schemas/*.sql` files remain as a test/tooling
+  path for fabricating and upgrading old databases; normal startup uses
+  `create_or_upgrade_*` and Alembic.
+* The engine factory accepts either a filesystem path / `:memory:` (SQLite)
+  or a SQLAlchemy URL containing `://`. SQLite still gets the
+  `foreign_keys` pragma and file-based atomic creation; other dialects skip
+  SQLite-only checks.
+* `test_dialects.py` runs the same channel round-trip against
+  `WORMHOLE_TEST_DATABASE_URL` when it is set, and is skipped otherwise.
 
 ## Before step 1
 

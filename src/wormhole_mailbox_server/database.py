@@ -2,15 +2,19 @@ import importlib.resources
 import os, shutil
 import sqlite3
 import tempfile
+import threading
 
-from sqlalchemy import create_engine, event, insert, select
+from alembic import command
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import StaticPool
 
 from twisted.python import log
 
-from .schema import SCHEMAS, TARGET_VERSIONS
+from .schema import TARGET_VERSIONS
 from .store import AddressIDStore, MailboxStore, UsageStore, _Store
 
 
@@ -33,6 +37,8 @@ def get_upgrader(name, new_version):
         raise ValueError("no upgrader for %d" % new_version)
 
 
+# Latest schema version of the pre-Alembic, integer-versioned databases.
+# These are still used to fabricate and upgrade old databases.
 CHANNELDB_TARGET_VERSION = TARGET_VERSIONS["channel"]
 USAGEDB_TARGET_VERSION = TARGET_VERSIONS["usage"]
 ADDRIDDB_TARGET_VERSION = TARGET_VERSIONS["addrid"]
@@ -43,10 +49,47 @@ _STORE_CLASSES = {
     "addrid": AddressIDStore,
 }
 
+# Each database has its own Alembic lineage and version table.
+MIGRATION_HEADS = {
+    "channel": "channel_0001",
+    "usage": "usage_0001",
+    "addrid": "addrid_0001",
+}
+_INITIAL_REVISIONS = dict(MIGRATION_HEADS)
+_VERSION_TABLES = {
+    "channel": "alembic_version_channel",
+    "usage": "alembic_version_usage",
+    "addrid": "alembic_version_addrid",
+}
+
+# Alembic's operation proxy is process-global, so migrations must not run
+# concurrently even when separate threads open separate databases.
+_MIGRATION_LOCK = threading.Lock()
+
+
+# ---------------------------------------------------------------------------
+# engines and schema creation
+# ---------------------------------------------------------------------------
+
+def _is_url(dbfile):
+    return "://" in dbfile
+
 
 def _make_engine(dbfile):
-    """Create a SQLAlchemy engine for the given file (or ``:memory:``)."""
-    if dbfile == ":memory:":
+    """Create a SQLAlchemy engine for a file path, ``:memory:``, or URL.
+
+    Plain paths keep the historical SQLite behavior. A value containing
+    ``://`` is treated as a SQLAlchemy URL, which is how non-SQLite backends
+    (PostgreSQL, MySQL) are selected.
+    """
+    if _is_url(dbfile):
+        kwargs = {}
+        if dbfile.startswith("sqlite"):
+            kwargs["connect_args"] = {"check_same_thread": False}
+            if ":memory:" in dbfile:
+                kwargs["poolclass"] = StaticPool
+        engine = create_engine(dbfile, **kwargs)
+    elif dbfile == ":memory:":
         engine = create_engine(
             "sqlite://",
             poolclass=StaticPool,
@@ -56,54 +99,41 @@ def _make_engine(dbfile):
         engine = create_engine("sqlite:///" + os.path.abspath(dbfile),
                                connect_args={"timeout": 30})
 
-    @event.listens_for(engine, "connect")
-    def _set_sqlite_pragma(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON")
-        cursor.close()
+    if engine.dialect.name == "sqlite":
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys = ON")
+            cursor.close()
 
     return engine
 
 
-def _initialize_db_schema(engine, name, target_version=None):
-    """Create the application schema.
-
-    Current-version databases are created from SQLAlchemy Core metadata.
-    Older versions (used to test upgrades) are created from the historical
-    SQL schema files.
-    """
-    if target_version is None:
-        target_version = TARGET_VERSIONS[name]
-    log.msg(f"populating new database with schema {name} v{target_version}")
-    if target_version == TARGET_VERSIONS[name]:
-        metadata = SCHEMAS[name]
-        metadata.create_all(engine)
-        version_table = metadata.tables["version"]
-        with engine.begin() as conn:
-            conn.execute(insert(version_table).values(version=target_version))
-    else:
-        schema = get_schema(name, target_version)
-        raw = engine.raw_connection()
-        try:
-            raw.driver_connection.executescript(schema)
-            raw.driver_connection.execute(
-                "INSERT INTO version (version) VALUES (?)", (target_version,))
-            raw.commit()
-        finally:
-            raw.close()
-
-
 def _check_foreign_keys(engine):
+    if engine.dialect.name != "sqlite":
+        return
     with engine.connect() as conn:
         problems = conn.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
     if problems:
         raise DBError(f"failed foreign key check: {problems}")
 
 
-def _get_version(engine, name):
-    table = SCHEMAS[name].tables["version"]
-    with engine.connect() as conn:
-        return conn.execute(select(table.c.version)).scalar_one()
+# ---------------------------------------------------------------------------
+# legacy (integer-version) schema creation, used to build old databases and
+# as the upgrade path for deployments created before Alembic
+# ---------------------------------------------------------------------------
+
+def _initialize_legacy_db_schema(engine, name, target_version):
+    log.msg(f"populating new database with schema {name} v{target_version}")
+    schema = get_schema(name, target_version)
+    raw = engine.raw_connection()
+    try:
+        raw.driver_connection.executescript(schema)
+        raw.driver_connection.execute(
+            "INSERT INTO version (version) VALUES (?)", (target_version,))
+        raw.commit()
+    finally:
+        raw.close()
 
 
 def _get_temporary_dbfile(dbfile):
@@ -117,16 +147,11 @@ def _get_temporary_dbfile(dbfile):
     return name
 
 
-def _atomic_create_and_initialize_db(dbfile, name, target_version=None):
-    """Create and return a new database engine, initialized with the
-    application schema.
-
-    If anything goes wrong, nothing is left at the ``dbfile`` path.
-    """
+def _atomic_create_legacy_db(dbfile, name, target_version):
     temp_dbfile = _get_temporary_dbfile(dbfile)
     try:
         engine = _make_engine(temp_dbfile)
-        _initialize_db_schema(engine, name, target_version)
+        _initialize_legacy_db_schema(engine, name, target_version)
         engine.dispose()
         os.rename(temp_dbfile, dbfile)
     except Exception:
@@ -136,7 +161,17 @@ def _atomic_create_and_initialize_db(dbfile, name, target_version=None):
     return _make_engine(dbfile)
 
 
-def _upgrade_db(engine, name, version, target_version):
+def _legacy_version(engine):
+    """Return the integer version of a pre-Alembic database, or None."""
+    inspector = inspect(engine)
+    if "version" not in inspector.get_table_names():
+        return None
+    with engine.connect() as conn:
+        row = conn.exec_driver_sql("SELECT version FROM version").first()
+    return row[0] if row else None
+
+
+def _upgrade_legacy_db(engine, name, version, target_version):
     while version < target_version:
         log.msg(f" need to upgrade from {version} to {target_version}")
         try:
@@ -156,26 +191,27 @@ def _upgrade_db(engine, name, version, target_version):
 
 
 def _get_db(dbfile, name, target_version):
-    """Open or create the given db file. The parent directory must exist.
-    Returns a store bound to the database, or raises DBError.
+    """Fabricate or upgrade an old, integer-versioned database.
+
+    This is used by tests and migration tooling; normal server startup uses
+    the Alembic path in ``_open_store``.
     """
     try:
         if dbfile == ":memory:":
             engine = _make_engine(dbfile)
-            _initialize_db_schema(engine, name, target_version)
+            _initialize_legacy_db_schema(engine, name, target_version)
         elif os.path.exists(dbfile):
             engine = _make_engine(dbfile)
         else:
-            engine = _atomic_create_and_initialize_db(dbfile, name,
-                                                       target_version)
+            engine = _atomic_create_legacy_db(dbfile, name, target_version)
         _check_foreign_keys(engine)
-        version = _get_version(engine, name)
+        version = _legacy_version(engine)
+        if version is None:
+            raise DBError("database has no version table")
     except DBError:
         raise
     except (OSError, sqlite3.OperationalError, sqlite3.DatabaseError,
             SQLAlchemyError) as e:
-        # this indicates that the file is not a compatible database format.
-        # Perhaps it was created with an old version, or it might be junk.
         raise DBError(f"Unable to create/open db file {dbfile}: {e}")
 
     if version < target_version and dbfile != ":memory:":
@@ -184,8 +220,8 @@ def _get_db(dbfile, name, target_version):
         shutil.copy(dbfile, backup_fn)
 
     if version < target_version:
-        _upgrade_db(engine, name, version, target_version)
-        version = _get_version(engine, name)
+        _upgrade_legacy_db(engine, name, version, target_version)
+        version = _legacy_version(engine)
 
     if version != target_version:
         raise DBError(f"Unable to handle db version {version}")
@@ -193,16 +229,114 @@ def _get_db(dbfile, name, target_version):
     return _STORE_CLASSES[name](engine)
 
 
+# ---------------------------------------------------------------------------
+# Alembic migrations
+# ---------------------------------------------------------------------------
+
+def _migration_config(script_location):
+    config = Config()
+    config.set_main_option("script_location", str(script_location))
+    return config
+
+
+def _run_migrations(engine, name, revision, operation=command.upgrade):
+    resource = importlib.resources.files(
+        "wormhole_mailbox_server").joinpath("migrations")
+    with importlib.resources.as_file(resource) as script_location:
+        config = _migration_config(script_location)
+        config.attributes["version_table"] = _VERSION_TABLES[name]
+        with engine.connect() as conn:
+            config.attributes["connection"] = conn
+            operation(config, revision)
+
+
+def _alembic_version(engine, name):
+    with engine.connect() as conn:
+        context = MigrationContext.configure(
+            conn, opts={"version_table": _VERSION_TABLES[name]})
+        return context.get_current_revision()
+
+
+def _ensure_schema(engine, name, dbfile):
+    """Bring a database up to the current Alembic head.
+
+    Fresh databases are created by Alembic. Databases created before
+    Alembic are first upgraded through the legacy integer-versioned
+    scripts, then stamped at the initial Alembic revision.
+    """
+    with _MIGRATION_LOCK:
+        return _ensure_schema_locked(engine, name, dbfile)
+
+
+def _ensure_schema_locked(engine, name, dbfile):
+    try:
+        if _alembic_version(engine, name) is None:
+            legacy = _legacy_version(engine)
+            if legacy is not None:
+                target = TARGET_VERSIONS[name]
+                if legacy > target:
+                    raise DBError(f"Unable to handle db version {legacy}")
+                if legacy < target:
+                    if dbfile != ":memory:" and not _is_url(dbfile):
+                        backup_fn = "%s-backup-v%d" % (dbfile, legacy)
+                        log.msg(" storing backup of v%d db in %s"
+                                % (legacy, backup_fn))
+                        shutil.copy(dbfile, backup_fn)
+                    _upgrade_legacy_db(engine, name, legacy, target)
+                log.msg(f"stamping {name} database at {_INITIAL_REVISIONS[name]}")
+                _run_migrations(engine, name, _INITIAL_REVISIONS[name],
+                                operation=command.stamp)
+        _run_migrations(engine, name, MIGRATION_HEADS[name])
+    except DBError:
+        raise
+    except (OSError, sqlite3.OperationalError, sqlite3.DatabaseError,
+            SQLAlchemyError) as e:
+        raise DBError(f"Unable to migrate db file {dbfile}: {e}")
+
+
+def _atomic_create_store(dbfile, name):
+    temp_dbfile = _get_temporary_dbfile(dbfile)
+    try:
+        engine = _make_engine(temp_dbfile)
+        _ensure_schema(engine, name, temp_dbfile)
+        engine.dispose()
+        os.rename(temp_dbfile, dbfile)
+    except Exception:
+        if os.path.exists(temp_dbfile):
+            os.remove(temp_dbfile)
+        raise
+    return _make_engine(dbfile)
+
+
+def _open_store(dbfile, name):
+    try:
+        if _is_url(dbfile) or dbfile == ":memory:":
+            engine = _make_engine(dbfile)
+            _ensure_schema(engine, name, dbfile)
+        elif os.path.exists(dbfile):
+            engine = _make_engine(dbfile)
+            _ensure_schema(engine, name, dbfile)
+        else:
+            engine = _atomic_create_store(dbfile, name)
+        _check_foreign_keys(engine)
+    except DBError:
+        raise
+    except (OSError, sqlite3.OperationalError, sqlite3.DatabaseError,
+            SQLAlchemyError) as e:
+        raise DBError(f"Unable to create/open db file {dbfile}: {e}")
+    return _STORE_CLASSES[name](engine)
+
+
 def create_or_upgrade_channel_db(dbfile):
-    return _get_db(dbfile, "channel", CHANNELDB_TARGET_VERSION)
+    return _open_store(dbfile, "channel")
 
 def create_or_upgrade_usage_db(dbfile):
     if dbfile is None:
         return None
-    return _get_db(dbfile, "usage", USAGEDB_TARGET_VERSION)
+    return _open_store(dbfile, "usage")
 
 def create_or_upgrade_addrid_db(dbfile):
-    return _get_db(dbfile, "addrid", ADDRIDDB_TARGET_VERSION)
+    return _open_store(dbfile, "addrid")
 
 
 class DBDoesntExist(Exception):
@@ -214,38 +348,33 @@ def open_existing_db(dbfile):
         raise DBDoesntExist()
     try:
         engine = _make_engine(dbfile)
-        _check_foreign_keys(engine)
-        _get_version(engine, "channel")
+        inspect(engine).get_table_names()
     except (OSError, sqlite3.OperationalError, sqlite3.DatabaseError,
             SQLAlchemyError) as e:
         raise DBError(f"Unable to open db file {dbfile}: {e}")
-    return _STORE_CLASSES["channel"](engine)
+    return MailboxStore(engine)
 
 
 class DBAlreadyExists(Exception):
     pass
 
-def _create_db(dbfile, name):
-    if dbfile == ":memory:":
-        engine = _make_engine(dbfile)
-        _initialize_db_schema(engine, name)
-    elif os.path.exists(dbfile):
-        raise DBAlreadyExists()
-    else:
-        engine = _atomic_create_and_initialize_db(dbfile, name)
-    return _STORE_CLASSES[name](engine)
-
 def create_channel_db(dbfile):
     """Create the given db file. Refuse to touch a pre-existing file.
 
     This is meant for use by migration tools, to create the output target"""
-    return _create_db(dbfile, "channel")
+    if not (_is_url(dbfile) or dbfile == ":memory:") and os.path.exists(dbfile):
+        raise DBAlreadyExists()
+    return _open_store(dbfile, "channel")
 
 def create_usage_db(dbfile):
-    return _create_db(dbfile, "usage")
+    if not (_is_url(dbfile) or dbfile == ":memory:") and os.path.exists(dbfile):
+        raise DBAlreadyExists()
+    return _open_store(dbfile, "usage")
 
 def create_addrid_db(dbfile):
-    return _create_db(dbfile, "addrid")
+    if not (_is_url(dbfile) or dbfile == ":memory:") and os.path.exists(dbfile):
+        raise DBAlreadyExists()
+    return _open_store(dbfile, "addrid")
 
 
 def _driver_connection(db):

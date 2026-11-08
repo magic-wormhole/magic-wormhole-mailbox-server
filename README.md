@@ -95,6 +95,18 @@ Connect:
 wormhole --relay-url=ws://localhost:4000/v1 send FILENAME
 ```
 
+## Database backends and migrations
+
+SQLite remains the default: `--channel-db` accepts a filename (or
+`:memory:`), and `--usage-db` / `--addrid-db` are optional SQLite files.
+The three databases can also be pointed at any SQLAlchemy URL containing
+`://` (for example `postgresql://user:pass@host/dbname`).
+
+Schema changes are applied with Alembic at startup. Existing SQLite
+databases created with older releases are upgraded through the legacy
+versioned SQL scripts, backed up first, and then stamped into the Alembic
+revision history.
+
 ## License, Compatibility
 
 This library is released under the MIT license, see LICENSE for details.

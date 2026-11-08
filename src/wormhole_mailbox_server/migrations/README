@@ -1,0 +1,20 @@
+# Migrations
+
+Three independent revision lineages live here, one for each database:
+
+* `channel_*` — channel database (`relay.sqlite`)
+* `usage_*` — usage database (`--usage-db`)
+* `addrid_*` — address-id database (`--addrid-db`)
+
+Each lineage has its own Alembic version table
+(`alembic_version_channel`, `alembic_version_usage`,
+`alembic_version_addrid`), because the server keeps the databases separate.
+
+The server runs the appropriate head automatically on startup. Existing
+databases created before Alembic used an integer `version` table and the
+SQL scripts in `../db-schemas/`; those are upgraded to the initial Alembic
+revision and stamped before normal migration runs.
+
+To add a migration, create a revision by hand using the existing naming
+scheme (for example `channel_0002_add_something`) and set
+`down_revision = "channel_0001"`.

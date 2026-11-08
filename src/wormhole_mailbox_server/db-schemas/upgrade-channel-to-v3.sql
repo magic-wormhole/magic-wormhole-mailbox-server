@@ -27,5 +27,20 @@ DROP TABLE `messages`;
 ALTER TABLE `messages_v3` RENAME TO `messages`;
 CREATE INDEX `messages_idx` ON `messages` (`app_id`, `mailbox_id`);
 
+-- The v1->v2 channel upgrade added an unused `ends` column that was never
+-- part of the fresh v2 schema. Drop it so upgraded databases match fresh
+-- ones. SQLite's DROP COLUMN needs 3.35+, so rebuild instead.
+CREATE TABLE `addrid_generation_v3`
+(
+ `generation` INTEGER,
+ `started` INTEGER
+);
+
+INSERT INTO `addrid_generation_v3` (`generation`, `started`)
+SELECT `generation`, `started` FROM `addrid_generation`;
+
+DROP TABLE `addrid_generation`;
+ALTER TABLE `addrid_generation_v3` RENAME TO `addrid_generation`;
+
 DELETE FROM `version`;
 INSERT INTO `version` (`version`) VALUES (3);

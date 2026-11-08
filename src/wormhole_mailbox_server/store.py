@@ -107,13 +107,6 @@ class _Store:
 
 
 class MailboxStore(_Store):
-    # -- version ----------------------------------------------------------
-
-    def get_version(self):
-        table = schema.channel_metadata.tables["version"]
-        return self.connection.execute(
-            select(table.c.version)).scalar_one()
-
     # -- nameplates -------------------------------------------------------
 
     def get_nameplate(self, app_id, name):

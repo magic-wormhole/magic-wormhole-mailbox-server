@@ -14,18 +14,9 @@ from sqlalchemy import (Boolean, Column, ForeignKey, Index, Integer,
                         MetaData, String, Table)
 
 
-def _version_table(metadata):
-    return Table(
-        "version", metadata,
-        Column("version", Integer),
-    )
-
-
 # -- channel database ----------------------------------------------------
 
 channel_metadata = MetaData()
-
-_version = _version_table(channel_metadata)
 
 nameplates = Table(
     "nameplates", channel_metadata,
@@ -108,8 +99,6 @@ connection_messages = Table(
 
 usage_metadata = MetaData()
 
-_usage_version = _version_table(usage_metadata)
-
 current = Table(
     "current", usage_metadata,
     Column("rebooted", Integer),
@@ -157,8 +146,6 @@ Index("client_versions_appid_time_idx", client_versions.c.app_id,
 # -- address-id database -------------------------------------------------
 
 addrid_metadata = MetaData()
-
-_addrid_version = _version_table(addrid_metadata)
 
 address_ids = Table(
     "address_ids", addrid_metadata,
