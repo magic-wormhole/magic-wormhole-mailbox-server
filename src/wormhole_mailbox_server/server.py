@@ -166,7 +166,7 @@ class AppNamespace:
 
     def __init__(self, db, usage_db, blur_usage, log_requests, app_id,
                  allow_list):
-        self._store = MailboxStore(db)
+        self._store = MailboxStore(db) if db is not None else None
         self._usage_store = UsageStore(usage_db) if usage_db else None
         self._blur_usage = blur_usage
         self._log_requests = log_requests

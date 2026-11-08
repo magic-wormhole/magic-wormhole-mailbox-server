@@ -4,6 +4,26 @@ This document records the persistence boundary found while starting the
 SQLAlchemy port described in [sql-alchemy.md](sql-alchemy.md). It is the
 baseline for the refactor: after step 1, protocol code must not contain SQL.
 
+## After step 2
+
+Schema and ordinary reads/writes now go through SQLAlchemy Core:
+
+* `src/wormhole_mailbox_server/schema.py` defines the three databases as
+  `MetaData`/`Table` objects with explicit types, foreign keys, and indexes.
+* Fresh current-version databases are created from that metadata. The
+  historical `db-schemas/*.sql` files are now used only to fabricate old
+  versions in upgrade tests and to run the existing upgrade scripts.
+* `store.py` executes Core expressions through one SQLAlchemy `Connection`
+  per database. `execute()` remains as a documented escape hatch for tests;
+  protocol code no longer uses it.
+* `dump_db()` unwraps a store to the driver connection for `iterdump()`.
+
+Known legacy inconsistency to resolve in the migration step:
+`channel-v2.sql` (and therefore fresh Core databases) has
+`addrid_generation(generation, started)`, while
+`upgrade-channel-to-v2.sql` adds an unused `ends` column. Alembic should
+produce the same shape as the fresh schema.
+
 ## Before step 1
 
 All database access lived in the Twisted/protocol modules:

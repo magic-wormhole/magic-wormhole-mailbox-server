@@ -135,7 +135,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
         app.release_nameplate(name, "side3", 7)
         np_row, side_rows = self._nameplate(app, name)
         self.assertEqual(np_row, None)
-        usage = app._usage_store.connection.execute("SELECT * FROM `nameplates`").fetchone()
+        usage = app._usage_store.execute("SELECT * FROM `nameplates`").fetchone()
         self.assertEqual(usage["app_id"], "appid")
         self.assertEqual(usage["started"], 0)
         self.assertEqual(usage["waiting_time"], 3)
@@ -206,7 +206,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
 
         mb_row, side_rows = self._mailbox(app, mailbox_id)
         self.assertEqual(mb_row, None)
-        usage = app._usage_store.connection.execute("SELECT * FROM `mailboxes`").fetchone()
+        usage = app._usage_store.execute("SELECT * FROM `mailboxes`").fetchone()
         self.assertEqual(usage["app_id"], "appid")
         self.assertEqual(usage["started"], 0)
         self.assertEqual(usage["waiting_time"], 2)
@@ -284,7 +284,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
 class Prune(unittest.TestCase):
 
     def _get_mailbox_updated(self, app, mbox_id):
-        row = app._store.connection.execute("SELECT * FROM `mailboxes` WHERE"
+        row = app._store.execute("SELECT * FROM `mailboxes` WHERE"
                               " `app_id`=? AND `id`=?",
                               (app._app_id, mbox_id)).fetchone()
         return row["updated"]

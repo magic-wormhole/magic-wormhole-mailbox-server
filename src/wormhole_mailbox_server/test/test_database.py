@@ -1,9 +1,36 @@
 import os
+from sqlalchemy import inspect
 from twisted.python import filepath
 from twisted.trial import unittest
 from .. import database
 from ..database import (CHANNELDB_TARGET_VERSION, USAGEDB_TARGET_VERSION,
                         _get_db, dump_db, DBError)
+
+
+def schema_signature(db):
+    """Return a dialect-independent description of a database's schema."""
+    inspector = inspect(db.engine)
+    signature = {}
+    for table in sorted(inspector.get_table_names()):
+        signature[table] = {
+            "columns": [
+                (column["name"], str(column["type"]), column["nullable"])
+                for column in inspector.get_columns(table)
+            ],
+            "primary_key": tuple(
+                inspector.get_pk_constraint(table)["constrained_columns"]),
+            "indexes": sorted(
+                (index["name"], tuple(index["column_names"]), index["unique"])
+                for index in inspector.get_indexes(table)
+            ),
+            "foreign_keys": sorted(
+                (tuple(fk["constrained_columns"]),
+                 fk["referred_table"],
+                 tuple(fk["referred_columns"]))
+                for fk in inspector.get_foreign_keys(table)
+            ),
+        }
+    return signature
 
 class Get(unittest.TestCase):
     def test_create_default(self):
@@ -73,22 +100,23 @@ class Get(unittest.TestCase):
         rows = dbA.execute("SELECT * FROM version").fetchall()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["version"], USAGEDB_TARGET_VERSION)
+        dbA_schema = schema_signature(dbA)
         dbA_text = dump_db(dbA)
         del dbA
 
         # make sure the upgrades got committed to disk
         dbB = _get_db(fn, "usage", USAGEDB_TARGET_VERSION)
         dbB_text = dump_db(dbB)
+        self.assertEqual(schema_signature(dbB), dbA_schema)
         del dbB
         self.assertEqual(dbA_text, dbB_text)
 
         # The upgraded schema should be equivalent to that of a new DB.
         latest_db = _get_db(":memory:", "usage", USAGEDB_TARGET_VERSION)
-        latest_text = dump_db(latest_db)
         with open("up.sql","w") as f: f.write(dbA_text)
-        with open("new.sql","w") as f: f.write(latest_text)
+        with open("new.sql","w") as f: f.write(dump_db(latest_db))
         # debug with "diff -u _trial_temp/up.sql _trial_temp/new.sql"
-        self.assertEqual(dbA_text, latest_text)
+        self.assertEqual(schema_signature(latest_db), dbA_schema)
 
     def test_upgrade_fails(self):
         basedir = self.mktemp()

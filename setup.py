@@ -35,6 +35,7 @@ setup(name="magic-wormhole-mailbox-server",
           "twisted[tls] >= 17.5.0",
           "autobahn[twisted] >= 0.14.1",
           "setuptools", # pkg_resources
+          "SQLAlchemy >= 2.0",
       ],
       extras_require={
           ':sys_platform=="win32"': ["pywin32"],
