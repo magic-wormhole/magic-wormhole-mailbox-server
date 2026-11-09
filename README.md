@@ -78,7 +78,10 @@ wormhole --relay-url=ws://example.com:4000/v1 send FILENAME
 
 The repository includes a multi-stage `misc/Dockerfile` that installs this
 package into a slim Python image, runs the server as an unprivileged user,
-and keeps all state in `/data`.
+and keeps all state in `/data`. The image installs the `backends` extra, so
+it includes the drivers for every supported database and pub/sub transport:
+PostgreSQL (`psycopg`), MySQL/MariaDB (`pymysql`), Redis (`redis`), and
+Kafka (`confluent-kafka`).
 
 Build:
 

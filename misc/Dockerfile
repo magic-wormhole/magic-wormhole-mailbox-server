@@ -10,7 +10,7 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
 
 WORKDIR /build
 COPY . .
-RUN python -m pip wheel --no-cache-dir --wheel-dir /wheels .
+RUN python -m pip wheel --no-cache-dir --wheel-dir /wheels '.[backends]'
 
 
 FROM python:${PYTHON_VERSION}-slim-bookworm
@@ -27,8 +27,9 @@ RUN groupadd --system --gid 10001 wormhole \
 
 COPY --from=builder /wheels /wheels
 RUN python -m pip install --no-cache-dir --no-index \
-        --find-links=/wheels magic-wormhole-mailbox-server \
+        --find-links=/wheels 'magic-wormhole-mailbox-server[backends]' \
  && rm -rf /wheels \
+ && python -c "import psycopg, pymysql, redis, confluent_kafka" \
  && python -c "import twisted.plugins; \
 from twisted.plugin import getPlugins; \
 from twisted.application.service import IServiceMaker; \
