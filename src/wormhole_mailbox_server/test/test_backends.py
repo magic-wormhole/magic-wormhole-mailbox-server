@@ -293,7 +293,9 @@ class ChannelBehavior(unittest.TestCase):
 
 class UsageBehavior(unittest.TestCase):
     def setUp(self):
-        self.store = create_or_upgrade_usage_db(_require_url("usage"))
+        self.replica_id = _unique("replica-")
+        self.store = create_or_upgrade_usage_db(_require_url("usage"),
+                                                self.replica_id)
         self.app_id = _unique("usage-")
 
     def test_records_usage_rows(self):
@@ -322,7 +324,8 @@ class UsageBehavior(unittest.TestCase):
         self.assertEqual(sorted(row["result"] for row in mailboxes),
                          ["happy", "lonely"])
 
-        current = _rows(self.store, schema.current)
+        current = _rows(self.store, schema.current,
+                        schema.current.c.replica_id == self.replica_id)
         self.assertEqual(len(current), 1)
         self.assertEqual(current[0]["connections_websocket"], 3)
 

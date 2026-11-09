@@ -1,14 +1,28 @@
 #import io, json
+import socket
+
 from twisted.trial import unittest
 from ..database import create_channel_db, create_usage_db
 from ..server import make_server, CrowdedError
+from ..store import UsageStore
 
 np1 = "1"
+
+
+def _rows(db, table):
+    """Return all rows, ignoring the replica bookkeeping columns."""
+    rows = db.execute("SELECT * FROM `%s`" % table).fetchall()
+    for row in rows:
+        row.pop("replica_id", None)
+        row.pop("id", None)
+    return rows
+
 
 class _Make:
     def make(self, blur_usage=None, with_usage_db=True):
         self._cdb = create_channel_db(":memory:")
-        db = create_usage_db(":memory:") if with_usage_db else None
+        db = (create_usage_db(":memory:", "test-replica")
+              if with_usage_db else None)
         s = make_server(self._cdb, usage_db=db, blur_usage=blur_usage)
         app = s.get_app("appid")
         return s, db, app
@@ -17,7 +31,7 @@ class Current(_Make, unittest.TestCase):
     def test_current_no_mailboxes(self):
         s, db, app = self.make()
         s.dump_stats(456, rebooted=451)
-        self.assertEqual(db.execute("SELECT * FROM `current`").fetchall(),
+        self.assertEqual(_rows(db, "current"),
                          [dict(rebooted=451, updated=456, blur_time=None,
                                connections_websocket=0),
                           ])
@@ -26,7 +40,7 @@ class Current(_Make, unittest.TestCase):
         s, db, app = self.make()
         app.open_mailbox("m1", "s1", 1)
         s.dump_stats(456, rebooted=451)
-        self.assertEqual(db.execute("SELECT * FROM `current`").fetchall(),
+        self.assertEqual(_rows(db, "current"),
                          [dict(rebooted=451, updated=456, blur_time=None,
                                connections_websocket=0),
                           ])
@@ -36,7 +50,7 @@ class Current(_Make, unittest.TestCase):
         mbox = app.open_mailbox("m1", "s1", 1)
         mbox.add_listener("h1", lambda sm: None, lambda: None)
         s.dump_stats(456, rebooted=451)
-        self.assertEqual(db.execute("SELECT * FROM `current`").fetchall(),
+        self.assertEqual(_rows(db, "current"),
                          [dict(rebooted=451, updated=456, blur_time=None,
                                connections_websocket=1),
                           ])
@@ -45,21 +59,21 @@ class ClientVersion(_Make, unittest.TestCase):
     def test_add_version(self):
         s, db, app = self.make()
         app.log_client_version(451, "side1", ("python", "1.2.3"))
-        self.assertEqual(db.execute("SELECT * FROM `client_versions`").fetchall(),
+        self.assertEqual(_rows(db, "client_versions"),
                          [dict(app_id="appid", connect_time=451, side="side1",
                                implementation="python", version="1.2.3")])
 
     def test_add_version_extra_fields(self):
         s, db, app = self.make()
         app.log_client_version(451, "side1", ("python", "1.2.3", "extra"))
-        self.assertEqual(db.execute("SELECT * FROM `client_versions`").fetchall(),
+        self.assertEqual(_rows(db, "client_versions"),
                          [dict(app_id="appid", connect_time=451, side="side1",
                                implementation="python", version="1.2.3")])
 
     def test_blur(self):
         s, db, app = self.make(blur_usage=100)
         app.log_client_version(451, "side1", ("python", "1.2.3"))
-        self.assertEqual(db.execute("SELECT * FROM `client_versions`").fetchall(),
+        self.assertEqual(_rows(db, "client_versions"),
                          [dict(app_id="appid", connect_time=400, side="side1",
                                implementation="python", version="1.2.3")])
 
@@ -73,10 +87,10 @@ class Nameplate(_Make, unittest.TestCase):
         app.claim_nameplate(np1, "s1", 1)
         app.claim_nameplate(np1, "s2", 3)
         app.release_nameplate(np1, "s1", 6)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [])
         app.release_nameplate(np1, "s2", 10)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [dict(app_id="appid", result="happy",
                                started=1, waiting_time=2, total_time=9)])
 
@@ -84,7 +98,7 @@ class Nameplate(_Make, unittest.TestCase):
         s, db, app = self.make()
         app.claim_nameplate(np1, "s1", 1)
         app.release_nameplate(np1, "s1", 6)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [dict(app_id="appid", result="lonely",
                                started=1, waiting_time=None, total_time=5)])
 
@@ -92,7 +106,7 @@ class Nameplate(_Make, unittest.TestCase):
         s, db, app = self.make()
         app.claim_nameplate(np1, "s1", 1)
         app.prune(10, 5) # prune at t=10, anything earlier than 5 is "old"
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [dict(app_id="appid", result="pruney",
                                started=1, waiting_time=None, total_time=9)])
 
@@ -102,13 +116,13 @@ class Nameplate(_Make, unittest.TestCase):
         app.claim_nameplate(np1, "s2", 2)
         with self.assertRaises(CrowdedError):
             app.claim_nameplate(np1, "s3", 3)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [])
         app.release_nameplate(np1, "s1", 4)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [])
         app.release_nameplate(np1, "s2", 5)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [])
         #print(self._cdb.execute("SELECT * FROM `nameplates`").fetchall())
         #print(self._cdb.execute("SELECT * FROM `nameplate_sides`").fetchall())
@@ -116,7 +130,7 @@ class Nameplate(_Make, unittest.TestCase):
         # nameplate, even though the third side threw CrowdedError and thus
         # probably doesn't think it has a claim
         app.release_nameplate(np1, "s3", 6)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [dict(app_id="appid", result="crowded",
                                started=1, waiting_time=1, total_time=5)])
 
@@ -126,10 +140,10 @@ class Nameplate(_Make, unittest.TestCase):
         app.claim_nameplate(np1, "s2", 2)
         with self.assertRaises(CrowdedError):
             app.claim_nameplate(np1, "s3", 3)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [])
         app.prune(10, 5)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [dict(app_id="appid", result="crowded",
                                started=1, waiting_time=1, total_time=9)])
 
@@ -144,10 +158,10 @@ class Nameplate(_Make, unittest.TestCase):
         app.claim_nameplate(np1, "s1", 21)
         app.claim_nameplate(np1, "s2", 23)
         app.release_nameplate(np1, "s1", 26)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [])
         app.release_nameplate(np1, "s2", 30)
-        self.assertEqual(db.execute("SELECT * FROM `nameplates`").fetchall(),
+        self.assertEqual(_rows(db, "nameplates"),
                          [dict(app_id="appid", result="happy",
                                started=20, waiting_time=2, total_time=9)])
 
@@ -157,7 +171,7 @@ class Mailbox(_Make, unittest.TestCase):
         app.claim_nameplate(np1, "s1", 1)
         app.release_nameplate(np1, "s1", 2)
         app.prune(10, 5)
-        self.assertEqual(db.execute("SELECT * FROM `mailboxes`").fetchall(),
+        self.assertEqual(_rows(db, "mailboxes"),
                          [dict(app_id="appid", for_nameplate=1, result="pruney",
                                started=1, waiting_time=None, total_time=9)])
 
@@ -167,7 +181,7 @@ class Mailbox(_Make, unittest.TestCase):
         mbox = app.open_mailbox(mid, "s1", 2)
         app.release_nameplate(np1, "s1", 3)
         mbox.close("s1", "mood-ignored", 4)
-        self.assertEqual(db.execute("SELECT * FROM `mailboxes`").fetchall(),
+        self.assertEqual(_rows(db, "mailboxes"),
                          [dict(app_id="appid", for_nameplate=1, result="lonely",
                                started=1, waiting_time=None, total_time=3)])
 
@@ -179,7 +193,7 @@ class Mailbox(_Make, unittest.TestCase):
         mbox2 = app.open_mailbox(mid, "s2", 4)
         mbox1.close("s1", "happy", 5)
         mbox2.close("s2", "happy", 6)
-        self.assertEqual(db.execute("SELECT * FROM `mailboxes`").fetchall(),
+        self.assertEqual(_rows(db, "mailboxes"),
                          [dict(app_id="appid", for_nameplate=1, result="happy",
                                started=1, waiting_time=3, total_time=5)])
 
@@ -191,7 +205,7 @@ class Mailbox(_Make, unittest.TestCase):
         mbox2 = app.open_mailbox(mid, "s2", 24)
         mbox1.close("s1", "happy", 25)
         mbox2.close("s2", "happy", 26)
-        self.assertEqual(db.execute("SELECT * FROM `mailboxes`").fetchall(),
+        self.assertEqual(_rows(db, "mailboxes"),
                          [dict(app_id="appid", for_nameplate=1, result="happy",
                                started=20, waiting_time=3, total_time=5)])
 
@@ -206,7 +220,7 @@ class Mailbox(_Make, unittest.TestCase):
         mbox2 = app.open_mailbox(mid, "s2", 4)
         mbox1.close("s1", "lonely", 5)
         mbox2.close("s2", "happy", 6)
-        self.assertEqual(db.execute("SELECT * FROM `mailboxes`").fetchall(),
+        self.assertEqual(_rows(db, "mailboxes"),
                          [dict(app_id="appid", for_nameplate=1, result="lonely",
                                started=1, waiting_time=3, total_time=5)])
 
@@ -218,7 +232,7 @@ class Mailbox(_Make, unittest.TestCase):
         mbox2 = app.open_mailbox(mid, "s2", 4)
         mbox1.close("s1", "scary", 5)
         mbox2.close("s2", "happy", 6)
-        self.assertEqual(db.execute("SELECT * FROM `mailboxes`").fetchall(),
+        self.assertEqual(_rows(db, "mailboxes"),
                          [dict(app_id="appid", for_nameplate=1, result="scary",
                                started=1, waiting_time=3, total_time=5)])
 
@@ -230,7 +244,7 @@ class Mailbox(_Make, unittest.TestCase):
         mbox2 = app.open_mailbox(mid, "s2", 4)
         mbox1.close("s1", "errory", 5)
         mbox2.close("s2", "happy", 6)
-        self.assertEqual(db.execute("SELECT * FROM `mailboxes`").fetchall(),
+        self.assertEqual(_rows(db, "mailboxes"),
                          [dict(app_id="appid", for_nameplate=1, result="errory",
                                started=1, waiting_time=3, total_time=5)])
 
@@ -242,7 +256,7 @@ class Mailbox(_Make, unittest.TestCase):
         mbox2 = app.open_mailbox(mid, "s2", 4)
         mbox1.close("s1", "errory", 5)
         mbox2.close("s2", "scary", 6)
-        self.assertEqual(db.execute("SELECT * FROM `mailboxes`").fetchall(),
+        self.assertEqual(_rows(db, "mailboxes"),
                          [dict(app_id="appid", for_nameplate=1, result="scary",
                                started=1, waiting_time=3, total_time=5)])
 
@@ -258,6 +272,68 @@ class Mailbox(_Make, unittest.TestCase):
         mbox2.close("s2", "happy", 7)
         # again, not realistic
         mbox2.close("s3", "happy", 8)
-        self.assertEqual(db.execute("SELECT * FROM `mailboxes`").fetchall(),
+        self.assertEqual(_rows(db, "mailboxes"),
                          [dict(app_id="appid", for_nameplate=1, result="crowded",
                                started=1, waiting_time=3, total_time=7)])
+
+
+class ReplicaScoping(unittest.TestCase):
+    def test_register_replica_records_hostname(self):
+        db = create_usage_db(":memory:", "replica-a")
+        db.register_replica("host.example")
+        rows = db.execute("SELECT * FROM `replicas`").fetchall()
+        self.assertEqual(rows, [dict(replica_id="replica-a",
+                                     hostname="host.example")])
+
+        # Re-registering replaces the existing row rather than duplicating it.
+        db.register_replica("other.example")
+        rows = db.execute("SELECT * FROM `replicas`").fetchall()
+        self.assertEqual(rows, [dict(replica_id="replica-a",
+                                     hostname="other.example")])
+
+    def test_register_replica_defaults_to_os_hostname(self):
+        db = create_usage_db(":memory:", "replica-a")
+        db.register_replica()
+        row = db.execute("SELECT * FROM `replicas`").fetchone()
+        self.assertEqual(row["hostname"], socket.gethostname())
+
+    def test_rows_are_stamped_with_replica_id(self):
+        db = create_usage_db(":memory:", "replica-a")
+        with db.transaction():
+            db.insert_client_version("appid", "side", 1, "python", "1.0")
+            db.insert_nameplate_usage("appid", 1, 2, 3, "happy")
+            db.insert_mailbox_usage("appid", True, 1, 2, 3, "happy")
+            db.replace_current(1, 2, None, 0)
+
+        for table in ["client_versions", "nameplates", "mailboxes", "current"]:
+            rows = db.execute("SELECT * FROM `%s`" % table).fetchall()
+            self.assertEqual([row["replica_id"] for row in rows],
+                             ["replica-a"], table)
+        for table in ["client_versions", "nameplates", "mailboxes"]:
+            row = db.execute("SELECT * FROM `%s`" % table).fetchone()
+            self.assertTrue(row["id"], table)
+
+    def test_current_is_scoped_to_replica(self):
+        db = create_usage_db(":memory:", "replica-a")
+        other = UsageStore(db, "replica-b")
+        with db.transaction():
+            db.replace_current(1, 2, None, 3)
+        with other.transaction():
+            other.replace_current(4, 5, None, 6)
+
+        rows = db.execute("SELECT * FROM `current`"
+                          " ORDER BY `replica_id`").fetchall()
+        self.assertEqual(
+            [(row["replica_id"], row["connections_websocket"])
+             for row in rows],
+            [("replica-a", 3), ("replica-b", 6)])
+
+        # Replacing one replica's current row must not touch the other.
+        with other.transaction():
+            other.replace_current(7, 8, None, 9)
+        rows = db.execute("SELECT * FROM `current`"
+                          " ORDER BY `replica_id`").fetchall()
+        self.assertEqual(
+            [(row["replica_id"], row["connections_websocket"])
+             for row in rows],
+            [("replica-a", 3), ("replica-b", 9)])

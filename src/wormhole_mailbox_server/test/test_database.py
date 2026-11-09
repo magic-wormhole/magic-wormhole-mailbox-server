@@ -250,6 +250,26 @@ class Alembic(SQLiteOnly):
         self.assertIn("messages", tables)
         self.assertNotIn("version", tables)
 
+    def test_usage_schema_replica_keys(self):
+        db = database.create_usage_db(":memory:", "replica-1")
+        self.assertEqual(database._alembic_version(db.engine, "usage"),
+                         "usage_0002")
+        inspector = inspect(db.engine)
+        self.assertEqual(
+            inspector.get_pk_constraint("current")["constrained_columns"],
+            ["replica_id"])
+        for table in ("nameplates", "mailboxes", "client_versions"):
+            self.assertEqual(
+                inspector.get_pk_constraint(table)["constrained_columns"],
+                ["id"])
+            self.assertIn("replica_id",
+                          [c["name"] for c in inspector.get_columns(table)])
+        self.assertEqual(
+            inspector.get_pk_constraint("replicas")["constrained_columns"],
+            ["replica_id"])
+        self.assertIn("hostname",
+                      [c["name"] for c in inspector.get_columns("replicas")])
+
     def test_legacy_channel_upgrade_is_stamped(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
@@ -291,12 +311,15 @@ class Alembic(SQLiteOnly):
         legacy.commit()
         del legacy
 
-        db = database.create_or_upgrade_usage_db(fn)
+        db = database.create_or_upgrade_usage_db(fn, "replica-1")
         self.assertEqual(database._alembic_version(db.engine, "usage"),
-                         "usage_0001")
+                         "usage_0002")
         rows = db.execute("SELECT * FROM `nameplates`").fetchall()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["result"], "happy")
+        self.assertEqual(rows[0]["replica_id"], "legacy")
+        self.assertTrue(rows[0]["id"])
+        self.assertEqual(db.replica_id, "replica-1")
 
     def test_corrupt_database(self):
         basedir = self.mktemp()
@@ -341,7 +364,7 @@ class CreateChannel(SQLiteOnly):
 
 class CreateUsage(SQLiteOnly):
     def test_memory(self):
-        db = database.create_usage_db(":memory:")
+        db = database.create_usage_db(":memory:", "replica-1")
         latest_text = dump_db(db)
         self.assertIn("CREATE TABLE", latest_text)
 
@@ -352,13 +375,13 @@ class CreateUsage(SQLiteOnly):
         with open(fn, "w"):
             pass
         with self.assertRaises(database.DBAlreadyExists):
-            database.create_usage_db(fn)
+            database.create_usage_db(fn, "replica-1")
 
     def test_create(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
         fn = os.path.join(basedir, "created.db")
-        db = database.create_usage_db(fn)
+        db = database.create_usage_db(fn, "replica-1")
         latest_text = dump_db(db)
         self.assertIn("CREATE TABLE", latest_text)
 
@@ -366,12 +389,12 @@ class CreateUsage(SQLiteOnly):
         basedir = self.mktemp()
         os.mkdir(basedir)
         fn = os.path.join(basedir, "created.db")
-        db = database.create_or_upgrade_usage_db(fn)
+        db = database.create_or_upgrade_usage_db(fn, "replica-1")
         latest_text = dump_db(db)
         self.assertIn("CREATE TABLE", latest_text)
 
     def test_create_or_upgrade_disabled(self):
-        db = database.create_or_upgrade_usage_db(None)
+        db = database.create_or_upgrade_usage_db(None, "replica-1")
         self.assertIs(db, None)
 
 class OpenChannel(SQLiteOnly):
@@ -397,7 +420,7 @@ class OpenUsage(SQLiteOnly):
         basedir = self.mktemp()
         os.mkdir(basedir)
         fn = os.path.join(basedir, "created.db")
-        db1 = database.create_usage_db(fn)
+        db1 = database.create_usage_db(fn, "replica-1")
         latest_text = dump_db(db1)
         self.assertIn("CREATE TABLE", latest_text)
         db2 = database.open_existing_db(fn)

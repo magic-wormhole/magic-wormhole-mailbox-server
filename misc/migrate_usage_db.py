@@ -24,16 +24,17 @@ from wormhole_mailbox_server.database import open_existing_db, create_usage_db
 
 source_fn = sys.argv[1]
 source_db = open_existing_db(source_fn)
-target_db = create_usage_db("usage.sqlite")
+target_db = create_usage_db("usage.sqlite", "legacy")
 
 num_nameplate_rows = 0
 for row in source_db.execute("SELECT * FROM `nameplate_usage`"
                              " ORDER BY `started`").fetchall():
     target_db.execute("INSERT INTO `nameplates`"
-                      " (`app_id`, `started`, `waiting_time`,"
-                      "  `total_time`, `result`)"
-                      " VALUES(?,?,?,?,?)",
-                      (row["app_id"], row["started"], row["waiting_time"],
+                      " (`replica_id`, `app_id`, `started`,"
+                      "  `waiting_time`, `total_time`, `result`)"
+                      " VALUES(?,?,?,?,?,?)",
+                      ("legacy", row["app_id"],
+                       row["started"], row["waiting_time"],
                        row["total_time"], row["result"]))
     num_nameplate_rows += 1
 
@@ -42,20 +43,20 @@ num_mailbox_rows = 0
 for row in source_db.execute("SELECT * FROM `mailbox_usage`"
                              " ORDER BY `started`").fetchall():
     target_db.execute("INSERT INTO `mailboxes`"
-                      " (`app_id`, `for_nameplate`,"
-                      " `started`, `total_time`, `waiting_time`,"
-                      "  `result`)"
-                      " VALUES(?,?,?,?,?,?)",
-                      (row["app_id"], row["for_nameplate"],
-                       row["started"], row["total_time"], row["waiting_time"],
+                      " (`replica_id`, `app_id`, `for_nameplate`,"
+                      "  `started`, `total_time`, `waiting_time`, `result`)"
+                      " VALUES(?,?,?,?,?,?,?)",
+                      ("legacy", row["app_id"],
+                       row["for_nameplate"], row["started"],
+                       row["total_time"], row["waiting_time"],
                        row["result"]))
     num_mailbox_rows += 1
 
 target_db.execute("INSERT INTO `current`"
-                  " (`rebooted`, `updated`, `blur_time`,"
+                  " (`replica_id`, `rebooted`, `updated`, `blur_time`,"
                   "  `connections_websocket`)"
-                  " VALUES(?,?,?,?)",
-                  (0, 0, 0, 0))
+                  " VALUES(?,?,?,?,?)",
+                  ("legacy", 0, 0, 0, 0))
 target_db.commit()
 
 print("usage database migrated (%d+%d rows) into 'usage.sqlite'" % (num_nameplate_rows, num_mailbox_rows))

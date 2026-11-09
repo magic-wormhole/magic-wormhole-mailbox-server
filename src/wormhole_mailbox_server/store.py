@@ -19,6 +19,8 @@ same durability behavior as before.
 legacy tooling. New protocol code should use the named methods.
 """
 
+import socket
+
 from contextlib import contextmanager
 
 from sqlalchemy import (Connection, Engine, delete, insert, select,
@@ -354,11 +356,28 @@ class MailboxStore(_Store):
 
 
 class UsageStore(_Store):
+    def __init__(self, bind, replica_id):
+        super().__init__(bind)
+        self.replica_id = replica_id
+
+    def register_replica(self, hostname=None):
+        """Record this replica and the host it is running on."""
+        if hostname is None:
+            hostname = socket.gethostname()
+        t = schema.usage_replicas
+        with self.transaction():
+            self.connection.execute(
+                delete(t).where(t.c.replica_id == self.replica_id))
+            self.connection.execute(
+                insert(t).values(replica_id=self.replica_id,
+                                 hostname=hostname))
+
     def insert_client_version(self, app_id, side, connect_time,
                               implementation, version):
         t = schema.client_versions
         self.connection.execute(
-            insert(t).values(app_id=app_id, side=side,
+            insert(t).values(replica_id=self.replica_id,
+                             app_id=app_id, side=side,
                              connect_time=connect_time,
                              implementation=implementation, version=version))
 
@@ -366,7 +385,8 @@ class UsageStore(_Store):
                                waiting_time, result):
         t = schema.usage_nameplates
         self.connection.execute(
-            insert(t).values(app_id=app_id, started=started,
+            insert(t).values(replica_id=self.replica_id,
+                             app_id=app_id, started=started,
                              total_time=total_time,
                              waiting_time=waiting_time, result=result))
 
@@ -374,17 +394,19 @@ class UsageStore(_Store):
                              waiting_time, result):
         t = schema.usage_mailboxes
         self.connection.execute(
-            insert(t).values(app_id=app_id, for_nameplate=for_nameplate,
+            insert(t).values(replica_id=self.replica_id,
+                             app_id=app_id, for_nameplate=for_nameplate,
                              started=started, total_time=total_time,
                              waiting_time=waiting_time, result=result))
 
     def replace_current(self, rebooted, updated, blur_time,
                         connections_websocket):
         t = schema.current
-        self.connection.execute(delete(t))
         self.connection.execute(
-            insert(t).values(rebooted=rebooted, updated=updated,
-                             blur_time=blur_time,
+            delete(t).where(t.c.replica_id == self.replica_id))
+        self.connection.execute(
+            insert(t).values(replica_id=self.replica_id, rebooted=rebooted,
+                             updated=updated, blur_time=blur_time,
                              connections_websocket=connections_websocket))
 
 

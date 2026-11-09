@@ -16,7 +16,7 @@ class ServerBase:
             blur_usage = None
         else:
             blur_usage = 60.0
-        usage_db = create_or_upgrade_usage_db(":memory:")
+        usage_db = create_or_upgrade_usage_db(":memory:", "test-replica")
         yield self._setup_relay(blur_usage=blur_usage, usage_db=usage_db)
 
     @inlineCallbacks

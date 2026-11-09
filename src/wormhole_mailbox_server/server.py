@@ -7,7 +7,7 @@ from .address_id import AddressIDTracker
 from .connections import ConnectionTable
 from .database import make_pubsub
 from .pubsub import DEFAULT_TOPIC
-from .store import MailboxStore, UsageStore
+from .store import MailboxStore
 
 def generate_mailbox_id():
     return base64.b32encode(os.urandom(8)).lower().strip(b"=").decode("ascii")
@@ -39,7 +39,7 @@ class Mailbox:
     def __init__(self, app, db, usage_db, app_id, mailbox_id):
         self._app = app
         self._store = MailboxStore(db)
-        self._usage_store = UsageStore(usage_db) if usage_db else None
+        self._usage_store = usage_db if usage_db else None
         self._app_id = app_id
         self._mailbox_id = mailbox_id
         self._listeners = {} # handle -> (send_f, stop_f)
@@ -180,7 +180,7 @@ class AppNamespace:
     def __init__(self, db, usage_db, blur_usage, log_requests, app_id,
                  allow_list, server=None):
         self._store = MailboxStore(db) if db is not None else None
-        self._usage_store = UsageStore(usage_db) if usage_db else None
+        self._usage_store = usage_db if usage_db else None
         self._blur_usage = blur_usage
         self._log_requests = log_requests
         self._app_id = app_id
@@ -513,7 +513,7 @@ class Server(service.MultiService):
         self._welcome = welcome
         self._blur_usage = blur_usage
         self._log_requests = blur_usage is None
-        self._usage_store = UsageStore(usage_db) if usage_db else None
+        self._usage_store = usage_db if usage_db else None
 
         self._addrid_tracker = AddressIDTracker(self._store, addrid_db) if addrid_db else None
         self._connection_table = ConnectionTable(self._store)

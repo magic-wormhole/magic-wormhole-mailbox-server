@@ -92,7 +92,8 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
     def setUp(self):
         self._lp = None
         self._clients = []
-        self._usage_db = usage_db = create_or_upgrade_usage_db(":memory:")
+        self._usage_db = usage_db = create_or_upgrade_usage_db(
+            ":memory:", "test-replica")
         yield self._setup_relay(do_listen=True,
                                 advertise_version="advertised.version",
                                 usage_db=usage_db)

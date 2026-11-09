@@ -59,13 +59,28 @@ _STORE_CLASSES = {
     "addrid": AddressIDStore,
 }
 
+
+def _new_store(name, bind, replica_id=None):
+    if name == "usage":
+        if replica_id is None:
+            raise ValueError("a usage store requires a replica_id")
+        return UsageStore(bind, replica_id)
+    return _STORE_CLASSES[name](bind)
+
 # Each database has its own Alembic lineage and version table.
 MIGRATION_HEADS = {
+    "channel": "channel_0001",
+    "usage": "usage_0002",
+    "addrid": "addrid_0001",
+}
+# Revision at which a pre-Alembic database is stamped. This is the first
+# Alembic revision, not the current head: any later revisions still have to
+# run against the legacy database.
+_INITIAL_REVISIONS = {
     "channel": "channel_0001",
     "usage": "usage_0001",
     "addrid": "addrid_0001",
 }
-_INITIAL_REVISIONS = dict(MIGRATION_HEADS)
 _VERSION_TABLES = {
     "channel": "alembic_version_channel",
     "usage": "alembic_version_usage",
@@ -458,7 +473,7 @@ def _get_db(dbfile, name, target_version):
     if version != target_version:
         raise DBError(f"Unable to handle db version {version}")
 
-    return _STORE_CLASSES[name](engine)
+    return _new_store(name, engine, replica_id="legacy")
 
 
 # ---------------------------------------------------------------------------
@@ -660,7 +675,7 @@ def _migrate_schema(engine, name, dbfile):
     _run_migrations(engine, name, MIGRATION_HEADS[name])
 
 
-def _open_store(dbfile, name):
+def _open_store(dbfile, name, replica_id=None):
     try:
         engine = _make_engine(dbfile)
         try:
@@ -679,16 +694,16 @@ def _open_store(dbfile, name):
     except (OSError, sqlite3.OperationalError, sqlite3.DatabaseError,
             SQLAlchemyError) as e:
         raise DBError(f"Unable to create/open db file {dbfile}: {e}")
-    return _STORE_CLASSES[name](engine)
+    return _new_store(name, engine, replica_id)
 
 
 def create_or_upgrade_channel_db(dbfile):
     return _open_store(dbfile, "channel")
 
-def create_or_upgrade_usage_db(dbfile):
+def create_or_upgrade_usage_db(dbfile, replica_id):
     if dbfile is None:
         return None
-    return _open_store(dbfile, "usage")
+    return _open_store(dbfile, "usage", replica_id)
 
 def create_or_upgrade_addrid_db(dbfile):
     return _open_store(dbfile, "addrid")
@@ -721,10 +736,10 @@ def create_channel_db(dbfile):
         raise DBAlreadyExists()
     return _open_store(dbfile, "channel")
 
-def create_usage_db(dbfile):
+def create_usage_db(dbfile, replica_id):
     if not (_is_url(dbfile) or dbfile == ":memory:") and os.path.exists(dbfile):
         raise DBAlreadyExists()
-    return _open_store(dbfile, "usage")
+    return _open_store(dbfile, "usage", replica_id)
 
 def create_addrid_db(dbfile):
     if not (_is_url(dbfile) or dbfile == ":memory:") and os.path.exists(dbfile):

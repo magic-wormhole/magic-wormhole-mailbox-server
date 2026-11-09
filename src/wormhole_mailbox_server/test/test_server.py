@@ -526,7 +526,7 @@ class Summary(unittest.TestCase):
 
     def test_blur(self):
         db = create_channel_db(":memory:")
-        usage_db = create_usage_db(":memory:")
+        usage_db = create_usage_db(":memory:", "test-replica")
         rv = make_server(db, blur_usage=3600, usage_db=usage_db)
         APPID = "appid"
         app = rv.get_app(APPID)
@@ -544,7 +544,7 @@ class Summary(unittest.TestCase):
 
     def test_no_blur(self):
         db = create_channel_db(":memory:")
-        usage_db = create_usage_db(":memory:")
+        usage_db = create_usage_db(":memory:", "test-replica")
         rv = make_server(db, blur_usage=None, usage_db=usage_db)
         APPID = "appid"
         app = rv.get_app(APPID)

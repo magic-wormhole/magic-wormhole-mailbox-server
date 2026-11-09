@@ -111,8 +111,8 @@ def install():
             schema.SCHEMAS[name].create_all(engine)
             database._stamp(engine, name, head)
 
-    def open_store(dbfile, name):
-        store = original_open_store(dbfile, name)
+    def open_store(dbfile, name, *args, **kwargs):
+        store = original_open_store(dbfile, name, *args, **kwargs)
         if getattr(store.engine, "_wormhole_isolated", False):
             connection = store.connection
             # Several store wrappers can share one connection (Server,

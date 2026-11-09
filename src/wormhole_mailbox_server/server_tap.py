@@ -6,6 +6,7 @@ from twisted.application.internet import (TimerService,
                                           StreamServerEndpointService)
 from twisted.internet import endpoints
 from .increase_rlimits import increase_rlimits
+from .replica import load_or_create_replica_id
 from .server import make_server
 from .web import make_web_server
 from .database import (create_or_upgrade_channel_db, create_or_upgrade_usage_db,
@@ -25,6 +26,8 @@ class Options(usage.Options):
         ("channel-db", None, "relay.sqlite", "location for the state database"),
         ("usage-db", None, None, "record usage data (SQLite)"),
         ("addrid-db", None, None, "IP address mapping data (SQLite)"),
+        ("replica-id-file", None, "replica.id",
+         "persistent identity for this server replica"),
         ("pubsub", None, None,
          "cross-process pub/sub backend: auto, local, postgres, redis://..., "
          "or kafka://..."),
@@ -76,8 +79,12 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
     parent = MultiService()
 
     channel_db = create_or_upgrade_channel_db(config["channel-db"])
+    replica_id = load_or_create_replica_id(config["replica-id-file"])
     usage_dbfile = config["usage-db"]
-    usage_db = create_or_upgrade_usage_db(usage_dbfile) if usage_dbfile else None
+    usage_db = (create_or_upgrade_usage_db(usage_dbfile, replica_id)
+                if usage_dbfile else None)
+    if usage_db:
+        usage_db.register_replica()
     addrid_dbfile = config["addrid-db"]
     addrid_db = create_or_upgrade_addrid_db(addrid_dbfile) if addrid_dbfile else None
     generation_duration = config["generation-duration"]

@@ -64,3 +64,6 @@ venv/
 /src/twisted/plugins/dropin.cache
 /relay.sqlite.migration-lock
 /usage.sqlite.migration-lock
+
+# Persistent per-replica identity
+replica.id

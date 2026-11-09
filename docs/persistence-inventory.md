@@ -29,7 +29,7 @@ fresh databases agree.
 * Alembic is the runtime migration mechanism, with one independent lineage
   and version table per database:
   `channel_0001` / `alembic_version_channel`,
-  `usage_0001` / `alembic_version_usage`,
+  `usage_0002` / `alembic_version_usage`,
   `addrid_0001` / `alembic_version_addrid`. Migration scripts ship inside
   the package (`src/wormhole_mailbox_server/migrations/`).
 * Fresh databases are created by Alembic. Pre-Alembic databases are
@@ -137,7 +137,13 @@ Each connection is a `sqlite3.Connection` with `row_factory` returning
 * **Usage DB** (`USAGEDB_TARGET_VERSION = 2`, optional): 
   `db-schemas/usage-v2.sql`, upgraded from v1 by
   `db-schemas/upgrade-usage-to-v2.sql`. Tables: `version`, `current`,
-  `nameplates`, `mailboxes`, `client_versions`.
+  `nameplates`, `mailboxes`, `client_versions`. The runtime Alembic schema
+  (`usage_0002`) adds a `replica_id` to every table so multiple replicas can
+  share one usage database: `current` is keyed by `replica_id`, while the
+  shared event tables use an autoincrement `id` as their primary key and keep
+  `replica_id` as non-key attribution metadata. A `replicas` table
+  (`replica_id` primary key, `hostname`) records the OS hostname of each
+  replica that opens the database.
 * **Address-id DB** (`ADDRIDDB_TARGET_VERSION = 1`, optional):
   `db-schemas/addrid-v1.sql`. Tables: `version`, `address_ids`.
 
@@ -176,8 +182,10 @@ SQLite-specific details to account for in later steps:
   update `active`, insert `connection_messages`, delete connection and its
   messages.
 
-`UsageStore` (usage DB): insert `client_versions`, insert nameplate
-summaries, insert mailbox summaries, replace the single `current` row.
+`UsageStore` (usage DB): register this replica's hostname, insert
+`client_versions`, insert nameplate summaries, insert mailbox summaries,
+replace this replica's `current` row. Every row is stamped with the store's
+persistent `replica_id`.
 
 `AddressIDStore` (address-id DB): clear, lookup by `(type, address)`,
 max counter per generation, insert, lookup by `(generation, counter)`.
