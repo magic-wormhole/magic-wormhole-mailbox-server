@@ -76,21 +76,50 @@ wormhole --relay-url=ws://example.com:4000/v1 send FILENAME
 
 ## Using Docker
 
-Dockerfile content:
-```dockerfile
-FROM python:3.11
-RUN pip install magic-wormhole-mailbox-server
-CMD [ "twist", "wormhole-mailbox","--usage-db=usage.sqlite" ]
-```
-> Note: This will be running as root, you should adjust it to be in user space for production.
+The repository includes a multi-stage `misc/Dockerfile` that installs this
+package into a slim Python image, runs the server as an unprivileged user,
+and keeps all state in `/data`.
 
-Build and run:
+Build:
+
 ```shell
-docker build -t magicwormhole Dockerfile
-docker run -p 4000:4000 -d magicwormhole
+docker build -f misc/Dockerfile -t magic-wormhole-mailbox .
 ```
 
-Connect:
+Run (the named volume persists `relay.sqlite` and `usage.sqlite`):
+
+```shell
+docker run -d --name wormhole-mailbox \
+  -p 4000:4000 \
+  -v wormhole-mailbox-data:/data \
+  magic-wormhole-mailbox
+```
+
+The container entrypoint is `twist wormhole-mailbox`; its default arguments
+are:
+
+```
+--channel-db=/data/relay.sqlite
+--usage-db=/data/usage.sqlite
+--port=tcp:4000
+```
+
+Override any of them by appending arguments after the image name. For
+example, to disable the usage database and add IP-address tracking:
+
+```shell
+docker run -d --name wormhole-mailbox \
+  -p 4000:4000 \
+  -v wormhole-mailbox-data:/data \
+  magic-wormhole-mailbox \
+  --channel-db=/data/relay.sqlite \
+  --addrid-db=/data/addrid.sqlite \
+  --port=tcp:4000
+```
+
+The image exposes port `4000` and includes a TCP healthcheck. Client
+commands point at the mapped port:
+
 ```shell
 wormhole --relay-url=ws://localhost:4000/v1 send FILENAME
 ```
