@@ -19,6 +19,9 @@ import random
 import threading
 
 from sqlalchemy import inspect, select
+from twisted.internet import reactor
+from twisted.internet.defer import inlineCallbacks
+from twisted.internet.task import deferLater
 from twisted.trial import unittest
 
 from .. import schema
@@ -27,6 +30,7 @@ from ..connections import ConnectionTable
 from ..database import (MIGRATION_HEADS, create_or_upgrade_addrid_db,
                         create_or_upgrade_channel_db,
                         create_or_upgrade_usage_db, _alembic_version)
+from ..pubsub import PubSubError
 from ..server import SidedMessage, make_server
 
 
@@ -47,6 +51,10 @@ def _require_url(kind):
     return value
 
 
+def _pubsub_url():
+    return os.environ.get("WORMHOLE_TEST_PUBSUB_URL")
+
+
 def _unique(prefix):
     return prefix + base64.b32encode(os.urandom(8)).decode("ascii").lower()
 
@@ -60,7 +68,7 @@ class ChannelBehavior(unittest.TestCase):
     def setUp(self):
         self.store = create_or_upgrade_channel_db(_require_url("channel"))
         self.app_id = _unique("app-")
-        self.server = make_server(self.store)
+        self.server = make_server(self.store, pubsub=_pubsub_url())
         self.app = self.server.get_app(self.app_id)
 
     def _nameplate_id(self):
@@ -122,6 +130,59 @@ class ChannelBehavior(unittest.TestCase):
         reopened.close("side1", "happy", 21)
         reopened.close("side2", "happy", 22)
         self.assertIsNone(other_store.get_mailbox(self.app_id, mailbox_id))
+
+    @inlineCallbacks
+    def test_cross_process_message_fanout(self):
+        """A listener on another server process receives a new message."""
+        url = _url("channel")
+        if not url.startswith("postgresql") and not _pubsub_url():
+            raise unittest.SkipTest(
+                "cross-process pub/sub requires PostgreSQL LISTEN/NOTIFY "
+                "or an explicit Redis/Kafka pub/sub URL")
+
+        name = self._nameplate_id()
+        mailbox_id = self.app.claim_nameplate(name, "side1", 0)
+        sender = self.app.open_mailbox(mailbox_id, "side1", 0)
+
+        other_store = create_or_upgrade_channel_db(url)
+        other_server = make_server(other_store, pubsub=_pubsub_url())
+        other_app = other_server.get_app(self.app_id)
+        receiver = other_app.open_mailbox(mailbox_id, "side2", 1)
+        received = []
+        receiver.add_listener("receiver", received.append, lambda: None)
+
+        self.server.startService()
+        other_server.startService()
+        try:
+            sender.add_message(SidedMessage(
+                side="side1", phase="p", body="fanout", server_rx=5,
+                msg_id="m1"))
+            for _ in range(300):
+                if received:
+                    break
+                yield deferLater(reactor, 0.05)
+            self.assertEqual([message.body for message in received],
+                             ["fanout"])
+            self.assertEqual(received[0].side, "side1")
+        finally:
+            other_server.stopService()
+            self.server.stopService()
+
+    def test_non_postgres_refuses_a_second_server(self):
+        """Backends without async pub/sub enforce a single process."""
+        url = _url("channel")
+        if url.startswith("postgresql") or _pubsub_url():
+            raise unittest.SkipTest(
+                "PostgreSQL, Redis, and Kafka support multiple server "
+                "processes")
+
+        self.server.startService()
+        try:
+            other_store = create_or_upgrade_channel_db(url)
+            other_server = make_server(other_store, pubsub=_pubsub_url())
+            self.assertRaises(PubSubError, other_server.startService)
+        finally:
+            self.server.stopService()
 
     def test_transaction_rolls_back(self):
         mailbox_id = _unique("mid-")

@@ -273,10 +273,18 @@ class MailboxStore(_Store):
     def insert_message(self, app_id, mailbox_id, side, phase, body,
                        server_rx, msg_id):
         t = schema.messages
-        self.connection.execute(
+        result = self.connection.execute(
             insert(t).values(app_id=app_id, mailbox_id=mailbox_id,
                              side=side, phase=phase, body=body,
                              server_rx=server_rx, msg_id=msg_id))
+        return result.inserted_primary_key[0]
+
+    def get_message(self, message_id):
+        t = schema.messages
+        row = self.connection.execute(
+            select(t).where(t.c.id == message_id)
+        ).mappings().first()
+        return dict(row) if row else None
 
     def delete_messages(self, mailbox_id):
         t = schema.messages

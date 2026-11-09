@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Run the unit and behavioral suites against SQLite, MySQL, and PostgreSQL.
+"""Run the unit and behavioral suites against SQLite, MySQL, PostgreSQL,
+Redis, and Kafka.
 
-SQLite runs locally. MySQL and PostgreSQL each have their own
-``docker compose`` configuration in this directory; the wrapper starts both
+SQLite runs locally. MySQL, PostgreSQL, Redis, and Kafka each have their own
+``docker compose`` configuration in this directory; the wrapper starts them
 and creates a fresh set of channel/usage/address-id databases in each.
 
 The three unit suites run in parallel first and report their status. Once
-they finish, the three behavioral suites run in parallel and report theirs.
+they finish, the five behavioral suites run in parallel and report theirs.
 
 Usage:
     .venv/bin/python misc/backends/test-backends.py
@@ -34,6 +35,8 @@ ROOT = Path(__file__).resolve().parents[2]
 BACKENDS_DIR = Path(__file__).resolve().parent
 POSTGRES_COMPOSE = BACKENDS_DIR / "docker-compose.postgres.yml"
 MYSQL_COMPOSE = BACKENDS_DIR / "docker-compose.mysql.yml"
+REDIS_COMPOSE = BACKENDS_DIR / "docker-compose.redis.yml"
+KAFKA_COMPOSE = BACKENDS_DIR / "docker-compose.kafka.yml"
 
 BEHAVIOR_MODULE = "wormhole_mailbox_server.test.test_backends"
 
@@ -91,10 +94,10 @@ def wait_for(compose_file, project, service, command, timeout=120):
     raise RuntimeError(f"{service} did not become ready in {timeout}s")
 
 
-def start_database(compose_file, project, service, ready_command):
+def start_database(compose_file, project, service, ready_command, timeout=120):
     log(f"starting {service} ({project})")
     run_compose(compose_file, project, "up", "-d", quiet=True)
-    wait_for(compose_file, project, service, ready_command)
+    wait_for(compose_file, project, service, ready_command, timeout=timeout)
 
 
 def create_postgres_databases(project, names):
@@ -226,6 +229,8 @@ def main():
     projects = {
         "postgres": f"wormhole-postgres-{run_id}",
         "mysql": f"wormhole-mysql-{run_id}",
+        "redis": f"wormhole-redis-{run_id}",
+        "kafka": f"wormhole-kafka-{run_id}",
     }
     database_names = {
         kind: f"wormhole_{run_id}_{kind}"
@@ -251,13 +256,22 @@ def main():
             ))
 
         log("starting database containers")
+        started_projects.extend([
+            ("postgres", projects["postgres"]),
+            ("mysql", projects["mysql"]),
+            ("redis", projects["redis"]),
+            ("kafka", projects["kafka"]),
+        ])
         start_database(POSTGRES_COMPOSE, projects["postgres"], "postgres",
                        ["pg_isready", "-U", "wormhole", "-d", "wormhole"])
-        started_projects.append(("postgres", projects["postgres"]))
         start_database(MYSQL_COMPOSE, projects["mysql"], "mysql",
                        ["mysqladmin", "ping", "-h", "127.0.0.1",
                         "-uroot", "-pwormhole", "--silent"])
-        started_projects.append(("mysql", projects["mysql"]))
+        start_database(REDIS_COMPOSE, projects["redis"], "redis",
+                       ["redis-cli", "ping"])
+        start_database(KAFKA_COMPOSE, projects["kafka"], "kafka",
+                       ["/opt/kafka/bin/kafka-broker-api-versions.sh",
+                        "--bootstrap-server", "localhost:9092"], timeout=180)
 
         log(f"creating databases: {', '.join(database_names.values())}")
         create_postgres_databases(projects["postgres"],
@@ -266,6 +280,18 @@ def main():
 
         postgres_port = os.environ.get("WORMHOLE_POSTGRES_PORT", "55432")
         mysql_port = os.environ.get("WORMHOLE_MYSQL_PORT", "53306")
+        redis_port = os.environ.get("WORMHOLE_REDIS_PORT", "56379")
+        kafka_port = os.environ.get("WORMHOLE_KAFKA_PORT", "59092")
+        redis_dir = os.path.join(temp_dir, "redis-behavior")
+        os.makedirs(redis_dir, exist_ok=True)
+        redis_env = sqlite_env(redis_dir)
+        redis_env["WORMHOLE_TEST_PUBSUB_URL"] = (
+            f"redis://127.0.0.1:{redis_port}/0")
+        kafka_dir = os.path.join(temp_dir, "kafka-behavior")
+        os.makedirs(kafka_dir, exist_ok=True)
+        kafka_env = sqlite_env(kafka_dir)
+        kafka_env["WORMHOLE_TEST_PUBSUB_URL"] = (
+            f"kafka://127.0.0.1:{kafka_port}")
 
         unit_suites.extend([
             Job(
@@ -298,6 +324,16 @@ def main():
                 backend_env("mysql+pymysql", database_names, mysql_port,
                             "root", "wormhole"),
             ),
+            Job(
+                "redis-behavior",
+                trial_command("redis-behavior", BEHAVIOR_MODULE),
+                redis_env,
+            ),
+            Job(
+                "kafka-behavior",
+                trial_command("kafka-behavior", BEHAVIOR_MODULE),
+                kafka_env,
+            ),
         ])
 
         log(f"running {len(unit_suites)} unit suites in parallel")
@@ -309,11 +345,15 @@ def main():
         report_jobs("behavior", behavior_suites)
     finally:
         if not args.keep:
+            compose_files = {
+                "postgres": POSTGRES_COMPOSE,
+                "mysql": MYSQL_COMPOSE,
+                "redis": REDIS_COMPOSE,
+                "kafka": KAFKA_COMPOSE,
+            }
             for name, project in started_projects:
-                compose_file = (POSTGRES_COMPOSE if name == "postgres"
-                                else MYSQL_COMPOSE)
                 log(f"stopping {name} ({project})")
-                run_compose(compose_file, project, "down", "-v",
+                run_compose(compose_files[name], project, "down", "-v",
                             "--remove-orphans", check=False, quiet=True)
         if not args.keep_temp:
             shutil.rmtree(temp_dir, ignore_errors=True)

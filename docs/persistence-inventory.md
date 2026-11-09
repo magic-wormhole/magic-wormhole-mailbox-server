@@ -69,6 +69,47 @@ fresh databases agree.
   PostgreSQL schema or MySQL database (`WORMHOLE_TEST_UNIT_BACKEND_URL`);
   SQLite-specific schema/upgrade tests skip in those runs.
 
+## Cross-process WebSocket fan-out
+
+The internal pub/sub layer wakes WebSocket listeners in other server
+processes. `pubsub/` is the transport-independent core (subscriptions,
+local delivery, lifecycle, and a lazy transport registry); transport modules
+(`pubsub/postgres.py`, `pubsub/redis.py`, `pubsub/kafka.py`) are imported only
+when selected by the database layer.
+
+* Messages remain durable in the channel database. `Mailbox.add_message()`
+  commits the message and then publishes a small event containing the
+  `app_id`, `mailbox_id`, and message id. Local listeners are notified
+  synchronously; remote processes read the committed row and broadcast it to
+  their own listeners.
+* PostgreSQL uses `LISTEN`/`NOTIFY` on a process-scoped channel, so any
+  number of server processes may share one channel database. The listener
+  and publisher use the channel database's existing SQLAlchemy engine. The
+  publishing process ignores its own notification.
+* Redis provides an independent transport for any channel database via
+  `--pubsub=redis://host:6379/0`. It requires the optional `redis` package
+  (`magic-wormhole-mailbox-server[redis]`).
+* Kafka provides an independent transport via
+  `--pubsub=kafka://host:9092` (optionally `/topic?group=prefix`). Each
+  process uses a unique consumer group so every process sees every message,
+  and messages are keyed by mailbox to preserve per-mailbox order. The
+  transport creates the topic if it does not exist; pass `create=false` when
+  topics are provisioned externally, and `partitions=N` to choose the
+  partition count. It requires the optional `confluent-kafka` package
+  (`magic-wormhole-mailbox-server[kafka]`).
+* Third-party transports can be added with `pubsub.register_transport(name,
+  module)`; the module must expose `create_pubsub(store, spec, scope)`.
+* SQLite file databases and MySQL/MariaDB have no equivalent asynchronous
+  notification primitive. Without Redis or Kafka, the server acquires a
+  process-lifetime lock (`<database>.server-lock` for SQLite, `GET_LOCK` for
+  MySQL) and refuses to start a second process against the same database.
+  In-memory SQLite is process-local already and needs no lock.
+* Unsupported database dialects refuse to start rather than silently running
+  replicas that cannot see each other's messages.
+* `test_backends.py` verifies cross-process delivery on PostgreSQL, on
+  SQLite with Redis, and on SQLite with Kafka, plus the single-process
+  refusal on SQLite and MySQL.
+
 ## Before step 1
 
 All database access lived in the Twisted/protocol modules:

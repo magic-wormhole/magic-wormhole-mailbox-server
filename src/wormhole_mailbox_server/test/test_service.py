@@ -28,6 +28,7 @@ class Service(unittest.TestCase):
                                                    blur_usage=None,
                                                    usage_db=None,
                                                    addrid_db=None,
+                                                   pubsub=None,
                                                    )])
         self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
         self.assertIsInstance(s, MultiService)
@@ -54,6 +55,7 @@ class Service(unittest.TestCase):
                                                    blur_usage=None,
                                                    usage_db=udb,
                                                    addrid_db=None,
+                                                   pubsub=None,
                                                    )])
         self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
         self.assertIsInstance(s, MultiService)
@@ -83,6 +85,7 @@ class Service(unittest.TestCase):
                                                    blur_usage=None,
                                                    usage_db=None,
                                                    addrid_db=aidb,
+                                                   pubsub=None,
                                                    )])
         self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
         self.assertIsInstance(s, MultiService)

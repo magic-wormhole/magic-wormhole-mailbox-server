@@ -138,8 +138,19 @@ Existing SQLite databases created with older releases are upgraded through
 the legacy versioned SQL scripts, backed up first, and then stamped into the
 Alembic revision history.
 
+Live WebSocket fan-out is also database-backed. PostgreSQL uses
+`LISTEN`/`NOTIFY`, so several server processes can share a channel database
+and deliver messages to clients connected to any replica. Redis or Kafka can
+be selected as an independent transport for any channel database with
+`--pubsub=redis://host:6379/0` or `--pubsub=kafka://host:9092` (install the
+`redis` or `kafka` extra). SQLite and MySQL/MariaDB have no equivalent
+asynchronous notification primitive; for those backends the server holds a
+process-lifetime lock and refuses to start a second process against the same
+database unless Redis or Kafka is configured. Use PostgreSQL, Redis, or
+Kafka for a horizontally scaled deployment.
+
 To run the unit suites against SQLite, MySQL, and PostgreSQL in parallel,
-followed by the three behavioral suites, use
+followed by the five behavioral suites, use
 `misc/backends/test-backends.py` (see `misc/backends/README.md`).
 
 ## License, Compatibility

@@ -1,7 +1,7 @@
 # Cross-backend test runner
 
-`test-backends.py` runs the behavioral suite against SQLite, MySQL, and
-PostgreSQL in parallel.
+`test-backends.py` runs the behavioral suite against SQLite, MySQL,
+PostgreSQL, Redis, and Kafka in parallel.
 
 ```sh
 cd brokers/magic-wormhole-mailbox-server
@@ -10,8 +10,10 @@ cd brokers/magic-wormhole-mailbox-server
 
 What it does:
 
-1. Starts PostgreSQL and MySQL with two independent `docker compose`
-   configurations (`docker-compose.postgres.yml`, `docker-compose.mysql.yml`).
+1. Starts PostgreSQL, MySQL, Redis, and Kafka with independent
+   `docker compose` configurations (`docker-compose.postgres.yml`,
+   `docker-compose.mysql.yml`, `docker-compose.redis.yml`,
+   `docker-compose.kafka.yml`).
 2. Creates fresh channel, usage, and address-id databases for each backend
    using a unique run id, so repeated runs never reuse state.
 3. Runs the unit suites in parallel first:
@@ -26,19 +28,26 @@ What it does:
    - `sqlite-behavior`: `test_backends` against temporary SQLite files.
    - `postgres-behavior`: `test_backends` against PostgreSQL.
    - `mysql-behavior`: `test_backends` against MySQL.
+   - `redis-behavior`: `test_backends` against SQLite with Redis pub/sub.
+   - `kafka-behavior`: `test_backends` against SQLite with Kafka pub/sub.
    It prints their statuses too.
 5. Tears the containers and databases down afterwards.
 
 The behavioral suite (`wormhole_mailbox_server.test.test_backends`) covers
 nameplate claim/release, message replay ordering, transaction rollback,
 concurrent message inserts, connection bookkeeping, usage rows,
-address-id generations, and migration idempotency.
+address-id generations, migration idempotency, and cross-process WebSocket
+fan-out. PostgreSQL is tested with two servers sharing the same channel
+database via `LISTEN`/`NOTIFY`; the `redis-behavior` and `kafka-behavior`
+jobs use SQLite channel databases with Redis or Kafka as the pub/sub
+transport. SQLite and MySQL also verify that a second process is refused
+when no cross-process pub/sub backend is configured.
 
 Requirements:
 
 - Docker with Compose v2 (or `docker-compose`).
 - The project virtualenv with the `dev` extras installed (includes
-  `psycopg` and `pymysql`).
+  `psycopg`, `pymysql`, `redis`, and `confluent-kafka`).
 
 The database containers use `tmpfs` for their data directories, so all
 test databases are RAM-backed and discarded with the container. PostgreSQL
@@ -56,8 +65,10 @@ exit (that would block on open transactions). The runner assumes a
 throwaway, tmpfs-backed database instance and discards everything by
 removing the container.
 
-Ports default to `55432` for PostgreSQL and `53306` for MySQL and can be
-overridden with `WORMHOLE_POSTGRES_PORT` / `WORMHOLE_MYSQL_PORT`.
+Ports default to `55432` for PostgreSQL, `53306` for MySQL, `56379` for
+Redis, and `59092` for Kafka and can be overridden with
+`WORMHOLE_POSTGRES_PORT`, `WORMHOLE_MYSQL_PORT`, `WORMHOLE_REDIS_PORT`, and
+`WORMHOLE_KAFKA_PORT`.
 
 Useful flags:
 

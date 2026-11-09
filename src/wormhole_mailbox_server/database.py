@@ -3,6 +3,7 @@ import hashlib
 import os, shutil
 import sqlite3
 import tempfile
+import threading
 from contextlib import contextmanager
 
 from alembic.migration import MigrationContext
@@ -11,7 +12,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 try:
     import fcntl
@@ -21,6 +22,8 @@ except ImportError:  # pragma: no cover - Windows
 
 from twisted.python import log
 
+from .pubsub import (LocalPubSub, PubSubError, SingletonPubSub,
+                     load_transport)
 from .schema import TARGET_VERSIONS
 from .store import AddressIDStore, MailboxStore, UsageStore, _Store
 
@@ -119,6 +122,225 @@ def _check_foreign_keys(engine):
         problems = conn.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
     if problems:
         raise DBError(f"failed foreign key check: {problems}")
+
+
+# ---------------------------------------------------------------------------
+# pub/sub backend selection
+#
+# The pub/sub core (see pubsub/) is database-independent.  This section is
+# the seam where a database backend chooses a transport: PostgreSQL can use
+# LISTEN/NOTIFY on the channel database's existing engine, while Redis is an
+# independent, explicit choice.  Backends without async notification support
+# get a process-lifetime lock so a second replica refuses to start.
+# ---------------------------------------------------------------------------
+
+def _pubsub_scope(engine):
+    """Return a stable namespace for this database/engine."""
+    url = engine.url
+    parts = [
+        url.get_backend_name(),
+        url.host or "",
+        str(url.port or ""),
+        url.database or "",
+        getattr(engine, "_wormhole_lock_suffix", ""),
+    ]
+    return "\x1f".join(parts)
+
+
+def _pubsub_channel(scope):
+    digest = hashlib.sha256(scope.encode("utf-8")).hexdigest()
+    return "wormhole_mailbox:" + digest
+
+
+def _pubsub_spec(backend):
+    """Return ``(kind, spec)`` for an explicit backend choice, else ``None``."""
+    choice = (backend or "").strip()
+    lowered = choice.lower()
+    if lowered in ("redis", "redis+unix"):
+        return "redis", "redis://127.0.0.1:6379/0"
+    if lowered.startswith(("redis://", "rediss://", "unix://")):
+        return "redis", choice
+    if lowered == "kafka":
+        return "kafka", "kafka://127.0.0.1:9092"
+    if lowered.startswith("kafka://"):
+        return "kafka", choice
+    if lowered in ("postgres", "postgresql", "db"):
+        return "postgres", choice
+    return None
+
+
+def _mysql_lock_name(scope):
+    # MySQL lock names are limited to 64 characters.
+    digest = hashlib.sha256(scope.encode("utf-8")).hexdigest()
+    return "wm_pubsub:" + digest[:50]
+
+
+class _SQLiteServerLock:
+    """A process-lifetime lock for a file-backed SQLite database."""
+
+    _guard = threading.Lock()
+    _locks = {}
+
+    def __init__(self, database):
+        self.database = os.path.abspath(database)
+        self.path = self.database + ".server-lock"
+        self._file = None
+
+    def acquire(self):
+        with self._guard:
+            if self.path in self._locks:
+                raise PubSubError(
+                    "another server process already uses SQLite database %s; "
+                    "SQLite does not support cross-process pub/sub. Use "
+                    "PostgreSQL or Redis for multiple server replicas."
+                    % self.database)
+            lock_file = open(self.path, "a+b")
+            try:
+                self._lock(lock_file)
+            except OSError:
+                lock_file.close()
+                raise PubSubError(
+                    "another server process already uses SQLite database %s; "
+                    "SQLite does not support cross-process pub/sub. Use "
+                    "PostgreSQL or Redis for multiple server replicas."
+                    % self.database)
+            self._locks[self.path] = lock_file
+            self._file = lock_file
+        log.msg("SQLite pub/sub is single-process only (%s)" % self.path)
+
+    def release(self):
+        lock_file = self._file
+        if lock_file is None:
+            return
+        with self._guard:
+            self._file = None
+            try:
+                self._unlock(lock_file)
+            finally:
+                lock_file.close()
+                self._locks.pop(self.path, None)
+
+    @staticmethod
+    def _lock(lock_file):
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        else:  # pragma: no cover - Windows
+            lock_file.seek(0)
+            if lock_file.read(1) == b"":
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+
+    @staticmethod
+    def _unlock(lock_file):
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        else:  # pragma: no cover - Windows
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+class _MySQLServerLock:
+    """A process-lifetime ``GET_LOCK`` for a MySQL/MariaDB database."""
+
+    def __init__(self, engine, scope):
+        self._url = engine.url
+        self._name = _mysql_lock_name(scope)
+        self._engine = None
+        self._connection = None
+
+    def acquire(self):
+        self._engine = create_engine(self._url, poolclass=NullPool)
+        self._connection = self._engine.raw_connection()
+        try:
+            cursor = self._connection.cursor()
+            try:
+                cursor.execute("SELECT GET_LOCK(%s, 0)", (self._name,))
+                row = cursor.fetchone()
+            finally:
+                cursor.close()
+            if not row or row[0] != 1:
+                raise PubSubError(
+                    "another server process already uses this MySQL "
+                    "database; MySQL does not support cross-process pub/sub. "
+                    "Use PostgreSQL or Redis for multiple server replicas.")
+        except Exception:
+            self._close()
+            raise
+        log.msg("MySQL pub/sub is single-process only (%s)" % self._name)
+
+    def release(self):
+        connection = self._connection
+        if connection is not None:
+            try:
+                cursor = connection.cursor()
+                try:
+                    cursor.execute("SELECT RELEASE_LOCK(%s)", (self._name,))
+                finally:
+                    cursor.close()
+            except Exception:
+                log.err()
+        self._close()
+
+    def _close(self):
+        connection = self._connection
+        self._connection = None
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
+        engine = self._engine
+        self._engine = None
+        if engine is not None:
+            engine.dispose()
+
+
+def make_pubsub(store, backend=None):
+    """Select the pub/sub transport for a channel store.
+
+    ``backend`` may be ``None``/``"auto"`` (use the database default),
+    ``"local"``, ``"postgres"``, a Redis URL such as
+    ``redis://localhost:6379/0``, or a Kafka URL such as
+    ``kafka://localhost:9092``.
+    """
+    engine = store.engine
+    dialect = engine.dialect.name
+    scope = _pubsub_scope(engine)
+    choice = (backend or "auto").strip()
+    lowered = choice.lower()
+
+    explicit = _pubsub_spec(backend)
+    if explicit is not None:
+        kind, spec = explicit
+        if kind == "postgres" and dialect != "postgresql":
+            raise PubSubError(
+                "the PostgreSQL pub/sub backend requires a PostgreSQL "
+                "channel database, not %s" % dialect)
+        return load_transport(kind).create_pubsub(store, spec, scope)
+
+    if lowered in ("local", "none"):
+        return LocalPubSub()
+
+    if lowered != "auto":
+        raise PubSubError(
+            "unknown pub/sub backend %r; use auto, local, postgres, "
+            "redis://..., or kafka://..." % backend)
+
+    if dialect == "postgresql":
+        return load_transport("postgres").create_pubsub(store, choice, scope)
+    if dialect == "sqlite":
+        database = engine.url.database
+        if not database or database == ":memory:":
+            return LocalPubSub()
+        return SingletonPubSub(_SQLiteServerLock(database))
+    if dialect in ("mysql", "mariadb"):
+        return SingletonPubSub(_MySQLServerLock(engine, scope))
+    raise PubSubError(
+        "database dialect %r does not support the pub/sub required for "
+        "cross-process WebSocket fan-out; configure a Redis or Kafka pub/sub "
+        "URL" % dialect)
 
 
 # ---------------------------------------------------------------------------

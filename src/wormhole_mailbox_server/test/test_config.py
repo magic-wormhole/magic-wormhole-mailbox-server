@@ -19,6 +19,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 
@@ -36,6 +37,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 
@@ -53,6 +55,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 
@@ -70,6 +73,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 
@@ -87,6 +91,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 
@@ -104,6 +109,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 
@@ -120,6 +126,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 
@@ -137,6 +144,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 
@@ -154,6 +162,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 
@@ -171,6 +180,7 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [("foo", "bar")],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 
@@ -192,6 +202,7 @@ class Config(unittest.TestCase):
                                                             ("baz", [1, "buz"]),
                                                             ],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
                              })
 

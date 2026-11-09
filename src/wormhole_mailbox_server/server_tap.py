@@ -25,6 +25,9 @@ class Options(usage.Options):
         ("channel-db", None, "relay.sqlite", "location for the state database"),
         ("usage-db", None, None, "record usage data (SQLite)"),
         ("addrid-db", None, None, "IP address mapping data (SQLite)"),
+        ("pubsub", None, None,
+         "cross-process pub/sub backend: auto, local, postgres, redis://..., "
+         "or kafka://..."),
         ("generation-duration", None, 86400, "lifetime of IP-address tracking table"),
         ("advertise-version", None, None, "version to recommend to clients"),
         ("signal-error", None, None, "force all clients to fail with a message"),
@@ -87,6 +90,7 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
                          usage_db=usage_db,
                          welcome_motd=config["motd"],
                          addrid_db=addrid_db,
+                         pubsub=config["pubsub"],
                          )
     server.setServiceParent(parent)
 

@@ -1,9 +1,12 @@
-import os, random, base64, re
+import os, random, base64, re, threading
 from collections import namedtuple
+from twisted.internet import reactor
 from twisted.python import log
 from twisted.application import service
 from .address_id import AddressIDTracker
 from .connections import ConnectionTable
+from .database import make_pubsub
+from .pubsub import DEFAULT_TOPIC
 from .store import MailboxStore, UsageStore
 
 def generate_mailbox_id():
@@ -104,15 +107,21 @@ class Mailbox:
 
     def _add_message(self, sm):
         with self._store.transaction():
-            self._store.insert_message(self._app_id, self._mailbox_id,
-                                       sm.side, sm.phase, sm.body,
-                                       sm.server_rx, sm.msg_id)
+            message_id = self._store.insert_message(
+                self._app_id, self._mailbox_id, sm.side, sm.phase, sm.body,
+                sm.server_rx, sm.msg_id)
             self._touch(sm.server_rx)
+        return message_id
 
     def add_message(self, sm):
         assert isinstance(sm, SidedMessage)
-        self._add_message(sm)
-        self.broadcast_message(sm)
+        message_id = self._add_message(sm)
+        server = getattr(self._app, "_server", None)
+        if server is not None:
+            server.publish_message(self._app_id, self._mailbox_id, message_id)
+        else:
+            # AppNamespace can be used without a Server in isolated tests.
+            self.broadcast_message(sm)
 
     def close(self, side, mood, when):
         assert isinstance(side, str), type(side)
@@ -169,7 +178,7 @@ class Mailbox:
 class AppNamespace:
 
     def __init__(self, db, usage_db, blur_usage, log_requests, app_id,
-                 allow_list):
+                 allow_list, server=None):
         self._store = MailboxStore(db) if db is not None else None
         self._usage_store = UsageStore(usage_db) if usage_db else None
         self._blur_usage = blur_usage
@@ -177,6 +186,7 @@ class AppNamespace:
         self._app_id = app_id
         self._mailboxes = {}
         self._allow_list = allow_list
+        self._server = server
 
     def log_client_version(self, server_rx, side, client_version):
         if self._blur_usage:
@@ -496,7 +506,7 @@ class AppNamespace:
 
 class Server(service.MultiService):
     def __init__(self, db, allow_list, welcome,
-                 blur_usage, usage_db=None, addrid_db=None):
+                 blur_usage, usage_db=None, addrid_db=None, pubsub=None):
         service.MultiService.__init__(self)
         self._store = MailboxStore(db)
         self._allow_list = allow_list
@@ -508,6 +518,9 @@ class Server(service.MultiService):
         self._addrid_tracker = AddressIDTracker(self._store, addrid_db) if addrid_db else None
         self._connection_table = ConnectionTable(self._store)
         self._apps = {}
+        self._reactor_thread = threading.get_ident()
+        self._pubsub = make_pubsub(self._store, pubsub)
+        self._pubsub.subscribe(DEFAULT_TOPIC, self._on_pubsub_event)
 
     def get_welcome(self):
         return self._welcome
@@ -534,8 +547,51 @@ class Server(service.MultiService):
                 self._log_requests,
                 app_id,
                 self._allow_list,
+                server=self,
             )
         return self._apps[app_id]
+
+    def publish_message(self, app_id, mailbox_id, message_id):
+        """Notify local listeners and other server processes about a message."""
+        self._pubsub.publish(DEFAULT_TOPIC, {
+            "app_id": app_id,
+            "mailbox_id": mailbox_id,
+            "message_id": message_id,
+        })
+
+    def _on_pubsub_event(self, topic, payload):
+        if topic != DEFAULT_TOPIC:
+            return
+        try:
+            app_id = payload["app_id"]
+            mailbox_id = payload["mailbox_id"]
+            message_id = int(payload["message_id"])
+        except (KeyError, TypeError, ValueError):
+            log.msg("ignoring malformed mailbox pub/sub event")
+            return
+        if threading.get_ident() == self._reactor_thread:
+            self._deliver_published_message(app_id, mailbox_id, message_id)
+        else:
+            # The PostgreSQL listener runs in a background thread; all
+            # mailbox/listener mutation must happen on the reactor thread.
+            reactor.callFromThread(
+                self._deliver_published_message, app_id, mailbox_id,
+                message_id)
+
+    def _deliver_published_message(self, app_id, mailbox_id, message_id):
+        app = self._apps.get(app_id)
+        if app is None:
+            return
+        mailbox = app._mailboxes.get(mailbox_id)
+        if mailbox is None or not mailbox.has_listeners():
+            return
+        row = self._store.get_message(message_id)
+        if (row is None or row["app_id"] != app_id
+                or row["mailbox_id"] != mailbox_id):
+            return
+        mailbox.broadcast_message(SidedMessage(
+            side=row["side"], phase=row["phase"], body=row["body"],
+            server_rx=row["server_rx"], msg_id=row["msg_id"]))
 
     def get_all_apps(self):
         return self._store.get_app_ids()
@@ -602,7 +658,12 @@ class Server(service.MultiService):
         # TODO: mailboxes without nameplates (needs new DB schema)
 
     def startService(self):
-        service.MultiService.startService(self)
+        self._pubsub.start()
+        try:
+            service.MultiService.startService(self)
+        except Exception:
+            self._pubsub.stop()
+            raise
         log.msg("Wormhole relay server running")
         if self._blur_usage:
             log.msg("blurring access times to %d seconds" % self._blur_usage)
@@ -621,7 +682,10 @@ class Server(service.MultiService):
         # other client gets an error, and exits promptly.
         for app in self._apps.values():
             app._shutdown()
-        return service.MultiService.stopService(self)
+        try:
+            return service.MultiService.stopService(self)
+        finally:
+            self._pubsub.stop()
 
 def make_server(db, allow_list=True,
                 advertise_version=None,
@@ -630,6 +694,7 @@ def make_server(db, allow_list=True,
                 usage_db=None,
                 welcome_motd=None,
                 addrid_db=None,
+                pubsub=None,
                 ):
     if blur_usage:
         log.msg("blurring access times to %d seconds" % blur_usage)
@@ -653,4 +718,5 @@ def make_server(db, allow_list=True,
         welcome["error"] = signal_error
 
     return Server(db, allow_list=allow_list, welcome=welcome,
-                  blur_usage=blur_usage, usage_db=usage_db, addrid_db=addrid_db)
+                  blur_usage=blur_usage, usage_db=usage_db, addrid_db=addrid_db,
+                  pubsub=pubsub)
