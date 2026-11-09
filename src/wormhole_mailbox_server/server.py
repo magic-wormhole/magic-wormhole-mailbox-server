@@ -1,4 +1,4 @@
-import os, random, base64, re, threading
+import os, random, base64, re, socket, threading, time, uuid
 from collections import namedtuple
 from twisted.internet import reactor
 from twisted.python import log
@@ -506,7 +506,8 @@ class AppNamespace:
 
 class Server(service.MultiService):
     def __init__(self, db, allow_list, welcome,
-                 blur_usage, usage_db=None, addrid_db=None, pubsub=None):
+                 blur_usage, usage_db=None, addrid_db=None, pubsub=None,
+                 replica_id=None):
         service.MultiService.__init__(self)
         self._store = MailboxStore(db)
         self._allow_list = allow_list
@@ -514,9 +515,16 @@ class Server(service.MultiService):
         self._blur_usage = blur_usage
         self._log_requests = blur_usage is None
         self._usage_store = usage_db if usage_db else None
+        self._replica_id = replica_id or uuid.uuid4().hex
+        self._replica_started = int(time.time())
+
+        with self._store.transaction():
+            self._store.register_replica(
+                self._replica_id, socket.gethostname(), os.getpid(),
+                self._replica_started)
 
         self._addrid_tracker = AddressIDTracker(self._store, addrid_db) if addrid_db else None
-        self._connection_table = ConnectionTable(self._store)
+        self._connection_table = ConnectionTable(self._store, self._replica_id)
         self._apps = {}
         self._reactor_thread = threading.get_ident()
         self._pubsub = make_pubsub(self._store, pubsub)
@@ -615,6 +623,18 @@ class Server(service.MultiService):
     def clear_connections(self):
         self._connection_table.clear()
 
+    def heartbeat(self, now):
+        with self._store.transaction():
+            self._store.heartbeat_replica(self._replica_id, int(now))
+
+    def expire_replicas(self, now, ttl):
+        with self._store.transaction():
+            return self._store.expire_stale_replicas(
+                int(now - ttl), exclude_replica_id=self._replica_id)
+
+    def get_live_connections(self, now, ttl):
+        return self._store.get_live_connections(int(now - ttl))
+
     def dump_stats(self, now, rebooted):
         if not self._usage_store:
             return
@@ -685,7 +705,11 @@ class Server(service.MultiService):
         try:
             return service.MultiService.stopService(self)
         finally:
-            self._pubsub.stop()
+            try:
+                with self._store.transaction():
+                    self._store.delete_replica(self._replica_id)
+            finally:
+                self._pubsub.stop()
 
 def make_server(db, allow_list=True,
                 advertise_version=None,
@@ -695,6 +719,7 @@ def make_server(db, allow_list=True,
                 welcome_motd=None,
                 addrid_db=None,
                 pubsub=None,
+                replica_id=None,
                 ):
     if blur_usage:
         log.msg("blurring access times to %d seconds" % blur_usage)
@@ -719,4 +744,4 @@ def make_server(db, allow_list=True,
 
     return Server(db, allow_list=allow_list, welcome=welcome,
                   blur_usage=blur_usage, usage_db=usage_db, addrid_db=addrid_db,
-                  pubsub=pubsub)
+                  pubsub=pubsub, replica_id=replica_id)

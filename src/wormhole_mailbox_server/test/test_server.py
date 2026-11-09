@@ -689,3 +689,24 @@ class SessionPersistence(unittest.TestCase):
 ## test make_server(signal_error=)
 ## exercise dump_stats (with/without usagedb)
 
+
+
+class ReplicaRegistration(unittest.TestCase):
+    def test_server_registers_heartbeats_and_cleans_up(self):
+        import socket
+
+        db = create_channel_db(":memory:")
+        server = make_server(db, replica_id="replica-x")
+
+        rows = db.execute("SELECT * FROM `replicas`").fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "replica-x")
+        self.assertEqual(rows[0]["host"], socket.gethostname())
+        self.assertEqual(rows[0]["pid"], os.getpid())
+
+        server.heartbeat(12345)
+        row = db.execute("SELECT * FROM `replicas`").fetchone()
+        self.assertEqual(row["heartbeat"], 12345)
+
+        server.stopService()
+        self.assertEqual(db.execute("SELECT * FROM `replicas`").fetchall(), [])

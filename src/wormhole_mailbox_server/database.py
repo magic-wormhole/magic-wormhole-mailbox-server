@@ -69,7 +69,7 @@ def _new_store(name, bind, replica_id=None):
 
 # Each database has its own Alembic lineage and version table.
 MIGRATION_HEADS = {
-    "channel": "channel_0001",
+    "channel": "channel_0002",
     "usage": "usage_0002",
     "addrid": "addrid_0001",
 }

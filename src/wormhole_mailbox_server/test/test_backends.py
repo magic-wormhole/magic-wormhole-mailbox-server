@@ -246,7 +246,7 @@ class ChannelBehavior(unittest.TestCase):
                          MIGRATION_HEADS["channel"])
 
     def test_connections(self):
-        table = ConnectionTable(self.store)
+        table = ConnectionTable(self.store, "replica-1")
         table.clear()
 
         connection = table.established((1, 2), 10)

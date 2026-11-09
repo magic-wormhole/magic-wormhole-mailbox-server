@@ -74,9 +74,20 @@ addrid_generation = Table(
     Column("started", Integer),
 )
 
+replicas = Table(
+    "replicas", channel_metadata,
+    Column("id", String(64), primary_key=True),
+    Column("started", Integer),
+    Column("heartbeat", Integer),
+    Column("host", String(255)),
+    Column("pid", Integer),
+)
+Index("replicas_heartbeat_idx", replicas.c.heartbeat)
+
 connections = Table(
     "connections", channel_metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("replica_id", String(64)),
     Column("addrid_generation", Integer),
     Column("addrid_counter", Integer),
     Column("connected", Integer),
@@ -85,6 +96,8 @@ connections = Table(
     Column("version", String(64)),
     Column("active", Integer),
 )
+Index("connections_replica_idx", connections.c.replica_id)
+Index("connections_active_idx", connections.c.active)
 
 connection_messages = Table(
     "connection_messages", channel_metadata,
@@ -92,6 +105,8 @@ connection_messages = Table(
     Column("when", Integer),
     Column("name", String(255)),
 )
+Index("connection_messages_id_idx", connection_messages.c.id,
+      connection_messages.c.when)
 
 
 # -- usage database ------------------------------------------------------

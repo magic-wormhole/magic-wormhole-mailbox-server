@@ -314,17 +314,77 @@ class MailboxStore(_Store):
         self.connection.execute(
             insert(t).values(generation=generation, started=started))
 
+    # -- replicas ---------------------------------------------------------
+
+    def register_replica(self, replica_id, hostname, pid, started):
+        """Claim *replica_id* and discard any rows left by its last run."""
+        t = schema.replicas
+        self.clear_connections(replica_id)
+        self.connection.execute(delete(t).where(t.c.id == replica_id))
+        self.connection.execute(
+            insert(t).values(id=replica_id, started=started,
+                             heartbeat=started, host=hostname, pid=pid))
+
+    def heartbeat_replica(self, replica_id, when):
+        t = schema.replicas
+        self.connection.execute(
+            update(t).where(t.c.id == replica_id).values(heartbeat=when))
+
+    def delete_replica(self, replica_id):
+        """Remove a replica and all of its connection bookkeeping."""
+        self.clear_connections(replica_id)
+        t = schema.replicas
+        self.connection.execute(delete(t).where(t.c.id == replica_id))
+
+    def expire_stale_replicas(self, stale_before, exclude_replica_id=None):
+        """Delete replicas whose heartbeat is older than *stale_before*."""
+        t = schema.replicas
+        query = select(t.c.id).where(t.c.heartbeat < stale_before)
+        if exclude_replica_id is not None:
+            # The local replica is alive by definition; a stalled event
+            # loop should not make it reap its own live sessions.
+            query = query.where(t.c.id != exclude_replica_id)
+        stale = list(self.connection.execute(query).scalars().all())
+        for replica_id in stale:
+            self.clear_connections(replica_id)
+            self.connection.execute(delete(t).where(t.c.id == replica_id))
+        self._clear_unowned_connections()
+        return stale
+
+    def _clear_unowned_connections(self):
+        # Rows from before ownership tracking have no replica and no
+        # heartbeat, so they can never become live again.
+        c = schema.connections
+        m = schema.connection_messages
+        unowned = select(c.c.id).where(c.c.replica_id.is_(None))
+        self.connection.execute(delete(m).where(m.c.id.in_(unowned)))
+        self.connection.execute(delete(c).where(c.c.replica_id.is_(None)))
+
+    def get_live_connections(self, fresh_after):
+        """Return connections owned by replicas with a fresh heartbeat."""
+        c = schema.connections
+        r = schema.replicas
+        rows = self.connection.execute(
+            select(c).join(r, r.c.id == c.c.replica_id)
+            .where(r.c.heartbeat >= fresh_after)
+        ).mappings().all()
+        return [dict(row) for row in rows]
+
     # -- connections ------------------------------------------------------
 
-    def clear_connections(self):
-        self.connection.execute(delete(schema.connection_messages))
-        self.connection.execute(delete(schema.connections))
+    def clear_connections(self, replica_id):
+        c = schema.connections
+        m = schema.connection_messages
+        owned = select(c.c.id).where(c.c.replica_id == replica_id)
+        self.connection.execute(delete(m).where(m.c.id.in_(owned)))
+        self.connection.execute(delete(c).where(c.c.replica_id == replica_id))
 
     def insert_connection(self, addrid_generation, addrid_counter,
-                          connected, active):
+                          connected, active, replica_id=None):
         t = schema.connections
         result = self.connection.execute(
-            insert(t).values(addrid_generation=addrid_generation,
+            insert(t).values(replica_id=replica_id,
+                             addrid_generation=addrid_generation,
                              addrid_counter=addrid_counter,
                              connected=connected, active=active))
         return result.inserted_primary_key[0]

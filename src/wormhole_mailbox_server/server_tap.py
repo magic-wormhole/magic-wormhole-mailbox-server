@@ -73,6 +73,10 @@ MINUTE = 60*SECONDS
 CHANNEL_EXPIRATION_TIME = 11*MINUTE
 EXPIRATION_CHECK_PERIOD = 5*MINUTE
 
+# A replica is considered dead once its heartbeat is older than the TTL.
+REPLICA_HEARTBEAT_PERIOD = 30*SECONDS
+REPLICA_TTL = 5*REPLICA_HEARTBEAT_PERIOD
+
 def makeService(config, channel_db="relay.sqlite", reactor=reactor):
     increase_rlimits()
 
@@ -98,6 +102,7 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
                          welcome_motd=config["motd"],
                          addrid_db=addrid_db,
                          pubsub=config["pubsub"],
+                         replica_id=replica_id,
                          )
     server.setServiceParent(parent)
 
@@ -124,8 +129,21 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
         except Exception as e:
             log.msg("error during check_addrid_generation")
             log.err(e)
+        try:
+            server.expire_replicas(now, REPLICA_TTL)
+        except Exception as e:
+            log.msg("error during expire_replicas")
+            log.err(e)
         server.dump_stats(now, rebooted=rebooted)
     TimerService(EXPIRATION_CHECK_PERIOD, expire).setServiceParent(parent)
+
+    def heartbeat():
+        try:
+            server.heartbeat(time.time())
+        except Exception as e:
+            log.msg("error during replica heartbeat")
+            log.err(e)
+    TimerService(REPLICA_HEARTBEAT_PERIOD, heartbeat).setServiceParent(parent)
 
     log_requests = config["blur-usage"] is None
     site = make_web_server(server, log_requests,

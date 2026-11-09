@@ -28,7 +28,7 @@ fresh databases agree.
 
 * Alembic is the runtime migration mechanism, with one independent lineage
   and version table per database:
-  `channel_0001` / `alembic_version_channel`,
+  `channel_0002` / `alembic_version_channel`,
   `usage_0002` / `alembic_version_usage`,
   `addrid_0001` / `alembic_version_addrid`. Migration scripts ship inside
   the package (`src/wormhole_mailbox_server/migrations/`).
@@ -134,6 +134,10 @@ Each connection is a `sqlite3.Connection` with `row_factory` returning
   `db-schemas/upgrade-channel-to-v2.sql`. Tables: `version`,
   `nameplates`, `nameplate_sides`, `mailboxes`, `mailbox_sides`,
   `messages`, `addrid_generation`, `connections`, `connection_messages`.
+  The runtime Alembic schema (`channel_0002`) adds a `replicas` registry
+  (`id`, `started`, `heartbeat`, `host`, `pid`) and stamps each connection
+  with its owning `replica_id`. Live sessions are the connections whose
+  owning replica has a fresh heartbeat; stale replicas are reaped by TTL.
 * **Usage DB** (`USAGEDB_TARGET_VERSION = 2`, optional): 
   `db-schemas/usage-v2.sql`, upgraded from v1 by
   `db-schemas/upgrade-usage-to-v2.sql`. Tables: `version`, `current`,
@@ -178,9 +182,12 @@ SQLite-specific details to account for in later steps:
 * app discovery: `SELECT DISTINCT app_id` over `nameplates`, `mailboxes`,
   `messages`.
 * address-id generation: read the single row, replace it.
-* connections: clear all, insert (returning `id`), bind to a side,
-  update `active`, insert `connection_messages`, delete connection and its
-  messages.
+* replicas: register (clearing that replica's previous connections),
+  heartbeat, delete, and expire rows whose heartbeat is stale.
+* connections: clear one replica's rows, insert (returning `id`) stamped
+  with `replica_id`, bind to a side, update `active`, insert
+  `connection_messages`, delete connection and its messages, and list live
+  connections joined to fresh replicas.
 
 `UsageStore` (usage DB): register this replica's hostname, insert
 `client_versions`, insert nameplate summaries, insert mailbox summaries,

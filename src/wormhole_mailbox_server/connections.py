@@ -2,12 +2,14 @@ from .store import MailboxStore
 
 
 class ConnectionTable(object):
-    def __init__(self, db):
+    def __init__(self, db, replica_id=None):
         self._store = MailboxStore(db) if db is not None else None
+        self._replica_id = replica_id
 
     def clear(self):
-        with self._store.transaction():
-            self._store.clear_connections()
+        if self._store:
+            with self._store.transaction():
+                self._store.clear_connections(self._replica_id)
 
     def established(self, address_id, now):
         if not address_id:
@@ -17,7 +19,8 @@ class ConnectionTable(object):
         if self._store:
             with self._store.transaction():
                 id = self._store.insert_connection(
-                    addrid_generation, addrid_counter, now, now)
+                    addrid_generation, addrid_counter, now, now,
+                    replica_id=self._replica_id)
         return Connection(self._store, id)
 
 

@@ -245,7 +245,7 @@ class Alembic(SQLiteOnly):
     def test_fresh_database_is_stamped(self):
         db = database.create_channel_db(":memory:")
         self.assertEqual(database._alembic_version(db.engine, "channel"),
-                         "channel_0001")
+                         "channel_0002")
         tables = inspect(db.engine).get_table_names()
         self.assertIn("messages", tables)
         self.assertNotIn("version", tables)
@@ -289,7 +289,7 @@ class Alembic(SQLiteOnly):
 
         db = database.create_or_upgrade_channel_db(fn)
         self.assertEqual(database._alembic_version(db.engine, "channel"),
-                         "channel_0001")
+                         "channel_0002")
         self.assertEqual([row["body"] for row in
                           db.get_messages("appid", "mid")], ["body"])
         # Re-opening runs the migration path again without changing state.
