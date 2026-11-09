@@ -94,6 +94,13 @@ def _make_engine(dbfile):
             kwargs["connect_args"] = {"check_same_thread": False}
             if ":memory:" in dbfile:
                 kwargs["poolclass"] = StaticPool
+        elif dbfile.startswith(("mysql", "mariadb")):
+            # MySQL's default REPEATABLE READ keeps a long-lived connection's
+            # original snapshot, so a process that has already read would
+            # never see rows committed by another replica.  READ COMMITTED
+            # makes each statement see the latest committed data, which the
+            # Kafka and Redis fan-out transports rely on.
+            kwargs["isolation_level"] = "READ COMMITTED"
         engine = create_engine(dbfile, **kwargs)
     elif dbfile == ":memory:":
         engine = create_engine(

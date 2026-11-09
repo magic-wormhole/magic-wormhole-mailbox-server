@@ -25,12 +25,26 @@ What it does:
      database.
    It prints a per-suite PASSED/FAILED status after this phase.
 4. Then runs the behavioral suites in parallel:
-   - `sqlite-behavior`: `test_backends` against temporary SQLite files.
-   - `postgres-behavior`: `test_backends` against PostgreSQL.
-   - `mysql-behavior`: `test_backends` against MySQL.
+   - `sqlite-behavior`: `test_backends` against temporary SQLite files with
+     the single-process local transport.
+   - `postgres-behavior`: `test_backends` against PostgreSQL with
+     `LISTEN`/`NOTIFY`.
+   - `mysql-behavior`: `test_backends` against MySQL with the single-process
+     local transport.
    - `redis-behavior`: `test_backends` against SQLite with Redis pub/sub.
    - `kafka-behavior`: `test_backends` against SQLite with Kafka pub/sub.
-   It prints their statuses too.
+   - `postgres-redis-behavior`, `postgres-kafka-behavior`: PostgreSQL as the
+     database with Redis or Kafka as the pub/sub transport.
+   - `mysql-redis-behavior`, `mysql-kafka-behavior`: MySQL as the database
+     with Redis or Kafka as the pub/sub transport.
+   Each job gets its own set of databases so the parallel jobs never share
+   state. It prints their statuses too.
+
+Together these jobs cover every supported database × pub/sub combination:
+SQLite, PostgreSQL, and MySQL each with their default transport, Redis, and
+Kafka (PostgreSQL's default is `LISTEN`/`NOTIFY`; SQLite and MySQL default
+to the single-process local transport, which is why their combined jobs use
+Redis or Kafka explicitly).
 5. Tears the containers and databases down afterwards.
 
 The behavioral suite (`wormhole_mailbox_server.test.test_backends`) covers
@@ -38,10 +52,9 @@ nameplate claim/release, message replay ordering, transaction rollback,
 concurrent message inserts, connection bookkeeping, usage rows,
 address-id generations, migration idempotency, and cross-process WebSocket
 fan-out. PostgreSQL is tested with two servers sharing the same channel
-database via `LISTEN`/`NOTIFY`; the `redis-behavior` and `kafka-behavior`
-jobs use SQLite channel databases with Redis or Kafka as the pub/sub
-transport. SQLite and MySQL also verify that a second process is refused
-when no cross-process pub/sub backend is configured.
+database via `LISTEN`/`NOTIFY`; the Redis and Kafka jobs verify fan-out with
+each database backend. SQLite and MySQL also verify that a second process is
+refused when no cross-process pub/sub backend is configured.
 
 Requirements:
 
@@ -72,6 +85,9 @@ Redis, and `59092` for Kafka and can be overridden with
 
 Useful flags:
 
+- `--job NAME` — run only the named suite; repeat to select several. This
+  is what the CI matrix uses so each entry starts only the containers it
+  needs.
 - `--no-sqlite` — only run the containerized backends.
 - `--unit-jobs N` — number of parallel trial workers for the SQLite unit
   suite (`auto` by default, `1` disables parallelism).

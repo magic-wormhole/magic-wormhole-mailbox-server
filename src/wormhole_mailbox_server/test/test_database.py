@@ -57,6 +57,29 @@ def schema_shape(db):
     }
 
 
+class EngineOptions(unittest.TestCase):
+    def test_mysql_uses_read_committed(self):
+        # A MySQL store keeps one long-lived connection.  The default
+        # REPEATABLE READ snapshot would hide rows committed by another
+        # replica, breaking Redis/Kafka fan-out.
+        engine = database._make_engine(
+            "mysql+pymysql://user:pass@127.0.0.1/db")
+        try:
+            self.assertEqual(
+                engine.dialect._on_connect_isolation_level,
+                "READ COMMITTED")
+        finally:
+            engine.dispose()
+
+    def test_sqlite_keeps_default_isolation(self):
+        engine = database._make_engine("sqlite://")
+        try:
+            self.assertIsNone(
+                engine.dialect._on_connect_isolation_level)
+        finally:
+            engine.dispose()
+
+
 class Get(SQLiteOnly):
     def test_create_default(self):
         db_url = ":memory:"

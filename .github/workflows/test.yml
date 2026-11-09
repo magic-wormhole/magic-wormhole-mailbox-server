@@ -33,3 +33,63 @@ jobs:
 
     - name: Upload Coverage
       run: codecov
+
+  test-backends:
+    name: backends (${{ matrix.database }} / ${{ matrix.pubsub }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - job: sqlite-unit
+          database: sqlite
+          pubsub: none
+        - job: postgres-unit
+          database: postgresql
+          pubsub: none
+        - job: mysql-unit
+          database: mysql
+          pubsub: none
+        - job: sqlite-behavior
+          database: sqlite
+          pubsub: local
+        - job: postgres-behavior
+          database: postgresql
+          pubsub: listen-notify
+        - job: mysql-behavior
+          database: mysql
+          pubsub: local
+        - job: redis-behavior
+          database: sqlite
+          pubsub: redis
+        - job: kafka-behavior
+          database: sqlite
+          pubsub: kafka
+        - job: postgres-redis-behavior
+          database: postgresql
+          pubsub: redis
+        - job: postgres-kafka-behavior
+          database: postgresql
+          pubsub: kafka
+        - job: mysql-redis-behavior
+          database: mysql
+          pubsub: redis
+        - job: mysql-kafka-behavior
+          database: mysql
+          pubsub: kafka
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -e ".[dev]"
+
+    - name: Run ${{ matrix.job }}
+      run: python misc/backends/test-backends.py --job ${{ matrix.job }}

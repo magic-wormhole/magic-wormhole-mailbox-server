@@ -150,8 +150,8 @@ database unless Redis or Kafka is configured. Use PostgreSQL, Redis, or
 Kafka for a horizontally scaled deployment.
 
 To run the unit suites against SQLite, MySQL, and PostgreSQL in parallel,
-followed by the five behavioral suites, use
-`misc/backends/test-backends.py` (see `misc/backends/README.md`).
+followed by the behavioral suites for every database × pub/sub combination,
+use `misc/backends/test-backends.py` (see `misc/backends/README.md`).
 
 ## License, Compatibility
 

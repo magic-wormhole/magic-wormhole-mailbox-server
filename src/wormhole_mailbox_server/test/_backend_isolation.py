@@ -76,7 +76,8 @@ def install():
             )
         else:
             engine = create_engine(admin_url.set(database=name),
-                                   poolclass=NullPool)
+                                   poolclass=NullPool,
+                                   isolation_level="READ COMMITTED")
         engine._wormhole_isolated = True
         engine._wormhole_lock_suffix = name
         isolated_engines.add(engine)
