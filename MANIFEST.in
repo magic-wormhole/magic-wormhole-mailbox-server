@@ -11,3 +11,7 @@ include misc/munin/wormhole_errors
 include misc/munin/wormhole_event_rate
 include misc/munin/wormhole_events
 include misc/munin/wormhole_events_alltime
+recursive-include src/wormhole_mailbox_server/db-schemas *.sql
+recursive-include src/wormhole_mailbox_server/migrations *.py README
+include misc/Dockerfile .dockerignore
+recursive-include misc/backends *.py *.yml *.md

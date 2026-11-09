@@ -19,7 +19,9 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
     def test_advertise_version(self):
@@ -36,7 +38,9 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
     def test_blur(self):
@@ -53,7 +57,9 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
     def test_channel_db(self):
@@ -70,7 +76,9 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
     def test_disallow_list(self):
@@ -87,7 +95,9 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
     def test_port(self):
@@ -104,7 +114,9 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
         o = server_tap.Options()
@@ -120,7 +132,9 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
     def test_signal_error(self):
@@ -137,7 +151,9 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
     def test_usage_db(self):
@@ -154,7 +170,9 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
     def test_websocket_protocol_option_1(self):
@@ -171,7 +189,9 @@ class Config(unittest.TestCase):
                              "motd": None,
                              "websocket-protocol-options": [("foo", "bar")],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
     def test_websocket_protocol_option_2(self):
@@ -192,7 +212,9 @@ class Config(unittest.TestCase):
                                                             ("baz", [1, "buz"]),
                                                             ],
                              "addrid-db": None,
+                             "pubsub": None,
                              "generation-duration": 86400,
+                             "replica-id-file": "replica.id",
                              })
 
     def test_websocket_protocol_option_errors(self):

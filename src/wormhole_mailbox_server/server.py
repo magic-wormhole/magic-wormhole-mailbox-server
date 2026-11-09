@@ -1,9 +1,13 @@
-import os, random, base64, re
+import os, random, base64, re, socket, threading, time, uuid
 from collections import namedtuple
+from twisted.internet import reactor
 from twisted.python import log
 from twisted.application import service
 from .address_id import AddressIDTracker
 from .connections import ConnectionTable
+from .database import make_pubsub
+from .pubsub import DEFAULT_TOPIC
+from .store import MailboxStore
 
 def generate_mailbox_id():
     return base64.b32encode(os.urandom(8)).lower().strip(b"=").decode("ascii")
@@ -34,8 +38,8 @@ SidedMessage = namedtuple("SidedMessage", ["side", "phase", "body",
 class Mailbox:
     def __init__(self, app, db, usage_db, app_id, mailbox_id):
         self._app = app
-        self._db = db
-        self._usage_db = usage_db
+        self._store = MailboxStore(db)
+        self._usage_store = usage_db if usage_db else None
         self._app_id = app_id
         self._mailbox_id = mailbox_id
         self._listeners = {} # handle -> (send_f, stop_f)
@@ -45,44 +49,35 @@ class Mailbox:
     def open(self, side, when):
         # requires caller to db.commit()
         assert isinstance(side, str), type(side)
-        db = self._db
+        store = self._store
 
-        already = db.execute("SELECT * FROM `mailbox_sides`"
-                             " WHERE `mailbox_id`=? AND `side`=?",
-                             (self._mailbox_id, side)).fetchone()
-        if not already:
-            db.execute("INSERT INTO `mailbox_sides`"
-                       " (`mailbox_id`, `opened`, `side`, `added`)"
-                       " VALUES(?,?,?,?)",
-                       (self._mailbox_id, True, side, when))
-        # We accept re-opening a mailbox which a side previously closed,
-        # unlike claim_nameplate(), which forbids any side from re-claiming a
-        # nameplate which they previously released. (Nameplates forbid this
-        # because the act of claiming a nameplate for the first time causes a
-        # new mailbox to be created, which should only happen once).
-        # Mailboxes have their own distinct objects (to manage
-        # subscriptions), so closing one which was already closed requires
-        # making a new object, which works by calling open() just before
-        # close(). We really do want to support re-closing closed mailboxes,
-        # because this enables intermittently-connected clients, who remember
-        # sending a 'close' but aren't sure whether it was received or not,
-        # then get shut down. Those clients will wake up and re-send the
-        # 'close', until they receive the 'closed' ack message.
+        with store.transaction():
+            already = store.get_mailbox_side(self._mailbox_id, side)
+            if not already:
+                store.insert_mailbox_side(self._mailbox_id, True, side, when)
+            # We accept re-opening a mailbox which a side previously closed,
+            # unlike claim_nameplate(), which forbids any side from re-claiming a
+            # nameplate which they previously released. (Nameplates forbid this
+            # because the act of claiming a nameplate for the first time causes a
+            # new mailbox to be created, which should only happen once).
+            # Mailboxes have their own distinct objects (to manage
+            # subscriptions), so closing one which was already closed requires
+            # making a new object, which works by calling open() just before
+            # close(). We really do want to support re-closing closed mailboxes,
+            # because this enables intermittently-connected clients, who remember
+            # sending a 'close' but aren't sure whether it was received or not,
+            # then get shut down. Those clients will wake up and re-send the
+            # 'close', until they receive the 'closed' ack message.
 
-        self._touch(when)
-        db.commit() # XXX: reconcile the need for this with the comment above
+            self._touch(when)
+        # XXX: reconcile the need for this with the comment above
 
     def _touch(self, when):
-        self._db.execute("UPDATE `mailboxes` SET `updated`=? WHERE `id`=?",
-                         (when, self._mailbox_id))
+        self._store.update_mailbox_updated(self._mailbox_id, when)
 
     def get_messages(self):
         messages = []
-        db = self._db
-        for row in db.execute("SELECT * FROM `messages`"
-                              " WHERE `app_id`=? AND `mailbox_id`=?"
-                              " ORDER BY `server_rx` ASC",
-                              (self._app_id, self._mailbox_id)).fetchall():
+        for row in self._store.get_messages(self._app_id, self._mailbox_id):
             sm = SidedMessage(side=row["side"], phase=row["phase"],
                               body=row["body"], server_rx=row["server_rx"],
                               msg_id=row["msg_id"])
@@ -111,67 +106,61 @@ class Mailbox:
             send_f(sm)
 
     def _add_message(self, sm):
-        self._db.execute("INSERT INTO `messages`"
-                         " (`app_id`, `mailbox_id`, `side`, `phase`,  `body`,"
-                         "  `server_rx`, `msg_id`)"
-                         " VALUES (?,?,?,?,?, ?,?)",
-                         (self._app_id, self._mailbox_id, sm.side,
-                          sm.phase, sm.body, sm.server_rx, sm.msg_id))
-        self._touch(sm.server_rx)
-        self._db.commit()
+        with self._store.transaction():
+            message_id = self._store.insert_message(
+                self._app_id, self._mailbox_id, sm.side, sm.phase, sm.body,
+                sm.server_rx, sm.msg_id)
+            self._touch(sm.server_rx)
+        return message_id
 
     def add_message(self, sm):
         assert isinstance(sm, SidedMessage)
-        self._add_message(sm)
-        self.broadcast_message(sm)
+        message_id = self._add_message(sm)
+        server = getattr(self._app, "_server", None)
+        if server is not None:
+            server.publish_message(self._app_id, self._mailbox_id, message_id)
+        else:
+            # AppNamespace can be used without a Server in isolated tests.
+            self.broadcast_message(sm)
 
     def close(self, side, mood, when):
         assert isinstance(side, str), type(side)
-        db = self._db
-        row = db.execute("SELECT * FROM `mailboxes`"
-                         " WHERE `app_id`=? AND `id`=?",
-                         (self._app_id, self._mailbox_id)).fetchone()
-        if not row:
-            return
-        for_nameplate = row["for_nameplate"]
+        store = self._store
+        with store.transaction():
+            row = store.get_mailbox(self._app_id, self._mailbox_id)
+            if not row:
+                return
+            for_nameplate = row["for_nameplate"]
 
-        row = db.execute("SELECT * FROM `mailbox_sides`"
-                         " WHERE `mailbox_id`=? AND `side`=?",
-                         (self._mailbox_id, side)).fetchone()
-        if not row:
-            return
-        db.execute("UPDATE `mailbox_sides` SET `opened`=?, `mood`=?"
-                   " WHERE `mailbox_id`=? AND `side`=?",
-                   (False, mood, self._mailbox_id, side))
-        db.commit()
+            row = store.get_mailbox_side(self._mailbox_id, side)
+            if not row:
+                return
+            store.close_mailbox_side(self._mailbox_id, side, mood)
 
-        # are any sides still open?
-        side_rows = db.execute("SELECT * FROM `mailbox_sides`"
-                               " WHERE `mailbox_id`=?",
-                               (self._mailbox_id,)).fetchall()
-        if any([sr["opened"] for sr in side_rows]):
-            return
+            # are any sides still open?
+            side_rows = store.get_mailbox_sides(self._mailbox_id)
+            if any([sr["opened"] for sr in side_rows]):
+                return
 
-        # nope. delete and summarize
+            # nope. delete and summarize
 
-        # if the nameplate is still allocated we'll get a foreign-key
-        # failure when trying to delete the mailbox, so get rid of
-        # those first
-        db.execute("DELETE FROM `nameplate_sides` WHERE `side`=?",
-                   (side,))
-        db.execute("DELETE FROM `nameplates` WHERE `mailbox_id`=?",
-                   (self._mailbox_id,))
-        # remove mailbox content
-        db.execute("DELETE FROM `messages` WHERE `mailbox_id`=?",
-                   (self._mailbox_id,))
-        db.execute("DELETE FROM `mailbox_sides` WHERE `mailbox_id`=?",
-                   (self._mailbox_id,))
-        db.execute("DELETE FROM `mailboxes` WHERE `id`=?", (self._mailbox_id,))
-        if self._usage_db:
-            self._app._summarize_mailbox_and_store(for_nameplate, side_rows,
-                                                when, pruned=False)
-            self._usage_db.commit()
-        db.commit()
+            # if the nameplate is still allocated we'll get a foreign-key
+            # failure when trying to delete the mailbox, so get rid of
+            # those first
+            store.delete_nameplate_sides_for_side(side)
+            store.delete_nameplates_for_mailbox(self._mailbox_id)
+            # remove mailbox content
+            store.delete_messages(self._mailbox_id)
+            store.delete_mailbox_sides(self._mailbox_id)
+            store.delete_mailbox(self._mailbox_id)
+
+        # Usage lives in a separate database, so it cannot share the channel
+        # transaction. Record it after the channel state is durable.
+        if self._usage_store:
+            with self._usage_store.transaction():
+                self._app._summarize_mailbox_and_store(
+                    for_nameplate, side_rows, when, pruned=False)
+
         # Shut down any listeners, just in case they're still lingering
         # around.
         for (send_f, stop_f) in self._listeners.values():
@@ -189,28 +178,25 @@ class Mailbox:
 class AppNamespace:
 
     def __init__(self, db, usage_db, blur_usage, log_requests, app_id,
-                 allow_list):
-        self._db = db
-        self._usage_db = usage_db
+                 allow_list, server=None):
+        self._store = MailboxStore(db) if db is not None else None
+        self._usage_store = usage_db if usage_db else None
         self._blur_usage = blur_usage
         self._log_requests = log_requests
         self._app_id = app_id
         self._mailboxes = {}
         self._allow_list = allow_list
+        self._server = server
 
     def log_client_version(self, server_rx, side, client_version):
         if self._blur_usage:
             server_rx = self._blur_usage * (server_rx // self._blur_usage)
         implementation = client_version[0]
         version = client_version[1]
-        if self._usage_db:
-            self._usage_db.execute("INSERT INTO `client_versions`"
-                                   " (`app_id`, `side`, `connect_time`,"
-                                   "  `implementation`, `version`)"
-                                   " VALUES(?,?,?,?,?)",
-                                   (self._app_id, side, server_rx,
-                                    implementation, version))
-            self._usage_db.commit()
+        if self._usage_store:
+            with self._usage_store.transaction():
+                self._usage_store.insert_client_version(
+                    self._app_id, side, server_rx, implementation, version)
 
     def get_nameplate_ids(self):
         if not self._allow_list:
@@ -218,11 +204,8 @@ class AppNamespace:
         return self._get_nameplate_ids()
 
     def _get_nameplate_ids(self):
-        db = self._db
         # TODO: filter this to numeric ids?
-        c = db.execute("SELECT DISTINCT `name` FROM `nameplates`"
-                       " WHERE `app_id`=?", (self._app_id,))
-        return {row["name"] for row in c.fetchall()}
+        return self._store.get_nameplate_names(self._app_id)
 
     def _find_available_nameplate_id(self):
         claimed = self._get_nameplate_ids()
@@ -257,41 +240,32 @@ class AppNamespace:
         assert isinstance(name, str), type(name)
         assert isinstance(side, str), type(side)
         check_valid_nameplate(name)
-        db = self._db
-        row = db.execute("SELECT * FROM `nameplates`"
-                         " WHERE `app_id`=? AND `name`=?",
-                         (self._app_id, name)).fetchone()
-        if not row:
-            if self._log_requests:
-                log.msg(f"creating nameplate#{name} for app_id {self._app_id}")
-            mailbox_id = generate_mailbox_id()
-            self._add_mailbox(mailbox_id, True, side, when) # ensure row exists
-            sql = ("INSERT INTO `nameplates`"
-                   " (`app_id`, `name`, `mailbox_id`)"
-                   " VALUES(?,?,?)")
-            npid = db.execute(sql, (self._app_id, name, mailbox_id)
-                              ).lastrowid
-        else:
-            npid = row["id"]
-            mailbox_id = row["mailbox_id"]
+        store = self._store
+        with store.transaction():
+            row = store.get_nameplate(self._app_id, name)
+            if not row:
+                if self._log_requests:
+                    log.msg(f"creating nameplate#{name} for app_id {self._app_id}")
+                mailbox_id = generate_mailbox_id()
+                self._add_mailbox(mailbox_id, True, side, when) # ensure row exists
+                npid = store.insert_nameplate(self._app_id, name, mailbox_id)
+            else:
+                npid = row["id"]
+                mailbox_id = row["mailbox_id"]
 
-        row = db.execute("SELECT * FROM `nameplate_sides`"
-                         " WHERE `nameplates_id`=? AND `side`=?",
-                         (npid, side)).fetchone()
-        if not row:
-            db.execute("INSERT INTO `nameplate_sides`"
-                       " (`nameplates_id`, `claimed`, `side`, `added`)"
-                       " VALUES(?,?,?,?)",
-                       (npid, True, side, when))
-        else:
-            if not row["claimed"]:
-                raise ReclaimedError("you cannot re-claim a nameplate that your side previously released")
-            # since that might cause a new mailbox to be allocated
-        db.commit()
+            row = store.get_nameplate_side(npid, side)
+            if not row:
+                store.insert_nameplate_side(npid, True, side, when)
+            else:
+                if not row["claimed"]:
+                    raise ReclaimedError("you cannot re-claim a nameplate that your side previously released")
+                # since that might cause a new mailbox to be allocated
 
+        # Open the mailbox in its own transaction: a crowded claim keeps the
+        # offending side rows (so the channel is summarized as "crowded")
+        # even though the caller sees an error.
         self.open_mailbox(mailbox_id, side, when) # may raise CrowdedError
-        rows = db.execute("SELECT * FROM `nameplate_sides`"
-                          " WHERE `nameplates_id`=?", (npid,)).fetchall()
+        rows = store.get_nameplate_sides(npid)
         if len(rows) > 2:
             # this line will probably never get hit: any crowding is noticed
             # on mailbox_sides first, inside open_mailbox()
@@ -307,48 +281,36 @@ class AppNamespace:
         #  * the nameplate sides will be removed
         assert isinstance(name, str), type(name)
         assert isinstance(side, str), type(side)
-        db = self._db
-        np_row = db.execute("SELECT * FROM `nameplates`"
-                            " WHERE `app_id`=? AND `name`=?",
-                            (self._app_id, name)).fetchone()
-        if not np_row:
-            return
-        npid = np_row["id"]
-        row = db.execute("SELECT * FROM `nameplate_sides`"
-                         " WHERE `nameplates_id`=? AND `side`=?",
-                         (npid, side)).fetchone()
-        if not row:
-            return
-        db.execute("UPDATE `nameplate_sides` SET `claimed`=?"
-                   " WHERE `nameplates_id`=? AND `side`=?",
-                   (False, npid, side))
-        db.commit()
+        store = self._store
+        with store.transaction():
+            np_row = store.get_nameplate(self._app_id, name)
+            if not np_row:
+                return
+            npid = np_row["id"]
+            row = store.get_nameplate_side(npid, side)
+            if not row:
+                return
+            store.set_nameplate_side_claimed(npid, side, False)
 
-        # now, are there any remaining claims?
-        side_rows = db.execute("SELECT * FROM `nameplate_sides`"
-                               " WHERE `nameplates_id`=?",
-                               (npid,)).fetchall()
-        claims = [1 for sr in side_rows if sr["claimed"]]
-        if claims:
-            return
-        # delete and summarize
-        db.execute("DELETE FROM `nameplate_sides` WHERE `nameplates_id`=?",
-                   (npid,))
-        db.execute("DELETE FROM `nameplates` WHERE `id`=?", (npid,))
-        if self._usage_db:
-            self._summarize_nameplate_and_store(side_rows, when, pruned=False)
-            self._usage_db.commit()
-        db.commit()
+            # now, are there any remaining claims?
+            side_rows = store.get_nameplate_sides(npid)
+            claims = [1 for sr in side_rows if sr["claimed"]]
+            if claims:
+                return
+            # delete and summarize
+            store.delete_nameplate_sides(npid)
+            store.delete_nameplate(npid)
+
+        if self._usage_store:
+            with self._usage_store.transaction():
+                self._summarize_nameplate_and_store(
+                    side_rows, when, pruned=False)
 
     def _summarize_nameplate_and_store(self, side_rows, delete_time, pruned):
-        # requires caller to self._usage_db.commit()
+        # requires caller to open a usage-store transaction
         u = self._summarize_nameplate_usage(side_rows, delete_time, pruned)
-        self._usage_db.execute("INSERT INTO `nameplates`"
-                            " (`app_id`,"
-                            " `started`, `total_time`, `waiting_time`, `result`)"
-                            " VALUES (?, ?,?,?,?)",
-                            (self._app_id,
-                            u.started, u.total_time, u.waiting_time, u.result))
+        self._usage_store.insert_nameplate_usage(
+            self._app_id, u.started, u.total_time, u.waiting_time, u.result)
 
     def _summarize_nameplate_usage(self, side_rows, delete_time, pruned):
         times = sorted([row["added"] for row in side_rows])
@@ -371,38 +333,36 @@ class AppNamespace:
 
     def _add_mailbox(self, mailbox_id, for_nameplate, side, when):
         assert isinstance(mailbox_id, str), type(mailbox_id)
-        db = self._db
-        row = db.execute("SELECT * FROM `mailboxes`"
-                         " WHERE `app_id`=? AND `id`=?",
-                         (self._app_id, mailbox_id)).fetchone()
+        store = self._store
+        row = store.get_mailbox(self._app_id, mailbox_id)
         if not row:
-            self._db.execute("INSERT INTO `mailboxes`"
-                             " (`app_id`, `id`, `for_nameplate`, `updated`)"
-                             " VALUES(?,?,?,?)",
-                             (self._app_id, mailbox_id, for_nameplate, when))
+            store.insert_mailbox(
+                self._app_id, mailbox_id, for_nameplate, when)
             # we don't need a commit here, because mailbox.open() only
             # does SELECT FROM `mailbox_sides`, not from `mailboxes`
 
     def open_mailbox(self, mailbox_id, side, when):
         assert isinstance(mailbox_id, str), type(mailbox_id)
-        self._add_mailbox(mailbox_id, False, side, when) # ensure row exists
-        db = self._db
-        if not mailbox_id in self._mailboxes: # ensure Mailbox object exists
-            if self._log_requests:
-                log.msg(f"spawning #{mailbox_id} for app_id {self._app_id}")
-            self._mailboxes[mailbox_id] = Mailbox(self,
-                                                  self._db, self._usage_db,
-                                                  self._app_id, mailbox_id)
-        mailbox = self._mailboxes[mailbox_id]
+        store = self._store
+        with store.transaction():
+            self._add_mailbox(mailbox_id, False, side, when) # ensure row exists
+            if not mailbox_id in self._mailboxes: # ensure Mailbox object exists
+                if self._log_requests:
+                    log.msg(f"spawning #{mailbox_id} for app_id {self._app_id}")
+                self._mailboxes[mailbox_id] = Mailbox(self,
+                                                      self._store,
+                                                      self._usage_store,
+                                                      self._app_id, mailbox_id)
+            mailbox = self._mailboxes[mailbox_id]
 
-        # delegate to mailbox.open() to add a row to mailbox_sides, and
-        # update the mailbox.updated timestamp
-        mailbox.open(side, when)
-        db.commit()
-        rows = db.execute("SELECT * FROM `mailbox_sides`"
-                          " WHERE `mailbox_id`=?",
-                          (mailbox_id,)).fetchall()
-        if len(rows) > 2:
+            # delegate to mailbox.open() to add a row to mailbox_sides, and
+            # update the mailbox.updated timestamp
+            mailbox.open(side, when)
+            rows = store.get_mailbox_sides(mailbox_id)
+            crowded = len(rows) > 2
+        if crowded:
+            # Preserve the crowded side rows for usage summaries; the caller
+            # still receives an error.
             raise CrowdedError("too many sides have opened this mailbox")
         return mailbox
 
@@ -418,14 +378,10 @@ class AppNamespace:
 
     def _summarize_mailbox_and_store(self, for_nameplate, side_rows,
                                      delete_time, pruned):
-        db = self._usage_db
         u = self._summarize_mailbox(side_rows, delete_time, pruned)
-        db.execute("INSERT INTO `mailboxes`"
-                   " (`app_id`, `for_nameplate`,"
-                   "  `started`, `total_time`, `waiting_time`, `result`)"
-                   " VALUES (?,?, ?,?,?,?)",
-                   (self._app_id, for_nameplate,
-                    u.started, u.total_time, u.waiting_time, u.result))
+        self._usage_store.insert_mailbox_usage(
+            self._app_id, for_nameplate,
+            u.started, u.total_time, u.waiting_time, u.result)
 
     def _summarize_mailbox(self, side_rows, delete_time, pruned):
         times = sorted([row["added"] for row in side_rows])
@@ -479,74 +435,62 @@ class AppNamespace:
         # present when the pruning process began, though, so in the log run
         # it should do less logging.
         log.msg(f" prune begins ({self._app_id})")
-        db = self._db
+        store = self._store
         modified = False
 
-        for mailbox in self._mailboxes.values():
-            if mailbox.has_listeners():
-                log.msg(f"touch {mailbox._mailbox_id} because listeners")
-                mailbox._touch(now)
-        db.commit() # make sure the updates are visible below
+        with store.transaction():
+            for mailbox in self._mailboxes.values():
+                if mailbox.has_listeners():
+                    log.msg(f"touch {mailbox._mailbox_id} because listeners")
+                    mailbox._touch(now)
 
-        new_mailboxes = set()
-        old_mailboxes = set()
-        for row in db.execute("SELECT * FROM `mailboxes` WHERE `app_id`=?",
-                              (self._app_id,)).fetchall():
-            mailbox_id = row["id"]
-            log.msg(f"  1: age={now - row['updated']}, old={now - old}, {mailbox_id}")
-            if row["updated"] > old:
-                new_mailboxes.add(mailbox_id)
-            else:
-                old_mailboxes.add(mailbox_id)
-        log.msg(" 2: mailboxes:", new_mailboxes, old_mailboxes)
+            new_mailboxes = set()
+            old_mailboxes = set()
+            for row in store.get_mailboxes(self._app_id):
+                mailbox_id = row["id"]
+                log.msg(f"  1: age={now - row['updated']}, old={now - old}, {mailbox_id}")
+                if row["updated"] > old:
+                    new_mailboxes.add(mailbox_id)
+                else:
+                    old_mailboxes.add(mailbox_id)
+            log.msg(" 2: mailboxes:", new_mailboxes, old_mailboxes)
 
-        old_nameplates = set()
-        for row in db.execute("SELECT * FROM `nameplates` WHERE `app_id`=?",
-                              (self._app_id,)).fetchall():
-            npid = row["id"]
-            mailbox_id = row["mailbox_id"]
-            if mailbox_id in old_mailboxes:
-                old_nameplates.add(npid)
-        log.msg(" 3: old_nameplates dbids", old_nameplates)
+            old_nameplates = set()
+            for row in store.get_nameplates(self._app_id):
+                npid = row["id"]
+                mailbox_id = row["mailbox_id"]
+                if mailbox_id in old_mailboxes:
+                    old_nameplates.add(npid)
+            log.msg(" 3: old_nameplates dbids", old_nameplates)
 
-        for npid in old_nameplates:
-            log.msg("  deleting nameplate with dbid", npid)
-            side_rows = db.execute("SELECT * FROM `nameplate_sides`"
-                                   " WHERE `nameplates_id`=?",
-                                   (npid,)).fetchall()
-            db.execute("DELETE FROM `nameplate_sides` WHERE `nameplates_id`=?",
-                       (npid,))
-            db.execute("DELETE FROM `nameplates` WHERE `id`=?", (npid,))
-            if self._usage_db:
-                self._summarize_nameplate_and_store(side_rows, now, pruned=True)
-            modified = True
+            for npid in old_nameplates:
+                log.msg("  deleting nameplate with dbid", npid)
+                side_rows = store.get_nameplate_sides(npid)
+                store.delete_nameplate_sides(npid)
+                store.delete_nameplate(npid)
+                if self._usage_store:
+                    with self._usage_store.transaction():
+                        self._summarize_nameplate_and_store(
+                            side_rows, now, pruned=True)
+                modified = True
 
-        # delete all messages for old mailboxes
-        # delete all old mailboxes
+            # delete all messages for old mailboxes
+            # delete all old mailboxes
 
-        for mailbox_id in old_mailboxes:
-            log.msg("  deleting mailbox", mailbox_id)
-            row = db.execute("SELECT * FROM `mailboxes`"
-                             " WHERE `id`=?", (mailbox_id,)).fetchone()
-            for_nameplate = row["for_nameplate"]
-            side_rows = db.execute("SELECT * FROM `mailbox_sides`"
-                                   " WHERE `mailbox_id`=?",
-                                   (mailbox_id,)).fetchall()
-            db.execute("DELETE FROM `messages` WHERE `mailbox_id`=?",
-                       (mailbox_id,))
-            db.execute("DELETE FROM `mailbox_sides` WHERE `mailbox_id`=?",
-                       (mailbox_id,))
-            db.execute("DELETE FROM `mailboxes` WHERE `id`=?",
-                       (mailbox_id,))
-            if self._usage_db:
-                self._summarize_mailbox_and_store(for_nameplate, side_rows,
-                                                  now, pruned=True)
-            modified = True
+            for mailbox_id in old_mailboxes:
+                log.msg("  deleting mailbox", mailbox_id)
+                row = store.get_mailbox_by_id(mailbox_id)
+                for_nameplate = row["for_nameplate"]
+                side_rows = store.get_mailbox_sides(mailbox_id)
+                store.delete_messages(mailbox_id)
+                store.delete_mailbox_sides(mailbox_id)
+                store.delete_mailbox(mailbox_id)
+                if self._usage_store:
+                    with self._usage_store.transaction():
+                        self._summarize_mailbox_and_store(
+                            for_nameplate, side_rows, now, pruned=True)
+                modified = True
 
-        if modified:
-            db.commit()
-            if self._usage_db:
-                self._usage_db.commit()
         in_use = bool(self._mailboxes)
         log.msg(f"  prune complete, modified={modified}, in_use={in_use}")
         return in_use
@@ -562,18 +506,29 @@ class AppNamespace:
 
 class Server(service.MultiService):
     def __init__(self, db, allow_list, welcome,
-                 blur_usage, usage_db=None, addrid_db=None):
+                 blur_usage, usage_db=None, addrid_db=None, pubsub=None,
+                 replica_id=None):
         service.MultiService.__init__(self)
-        self._db = db
+        self._store = MailboxStore(db)
         self._allow_list = allow_list
         self._welcome = welcome
         self._blur_usage = blur_usage
         self._log_requests = blur_usage is None
-        self._usage_db = usage_db
+        self._usage_store = usage_db if usage_db else None
+        self._replica_id = replica_id or uuid.uuid4().hex
+        self._replica_started = int(time.time())
 
-        self._addrid_tracker = AddressIDTracker(self._db, addrid_db) if addrid_db else None
-        self._connection_table = ConnectionTable(self._db)
+        with self._store.transaction():
+            self._store.register_replica(
+                self._replica_id, socket.gethostname(), os.getpid(),
+                self._replica_started)
+
+        self._addrid_tracker = AddressIDTracker(self._store, addrid_db) if addrid_db else None
+        self._connection_table = ConnectionTable(self._store, self._replica_id)
         self._apps = {}
+        self._reactor_thread = threading.get_ident()
+        self._pubsub = make_pubsub(self._store, pubsub)
+        self._pubsub.subscribe(DEFAULT_TOPIC, self._on_pubsub_event)
 
     def get_welcome(self):
         return self._welcome
@@ -594,27 +549,60 @@ class Server(service.MultiService):
             if self._log_requests:
                 log.msg(f"spawning app_id {app_id}")
             self._apps[app_id] = AppNamespace(
-                self._db,
-                self._usage_db,
+                self._store,
+                self._usage_store,
                 self._blur_usage,
                 self._log_requests,
                 app_id,
                 self._allow_list,
+                server=self,
             )
         return self._apps[app_id]
 
+    def publish_message(self, app_id, mailbox_id, message_id):
+        """Notify local listeners and other server processes about a message."""
+        self._pubsub.publish(DEFAULT_TOPIC, {
+            "app_id": app_id,
+            "mailbox_id": mailbox_id,
+            "message_id": message_id,
+        })
+
+    def _on_pubsub_event(self, topic, payload):
+        if topic != DEFAULT_TOPIC:
+            return
+        try:
+            app_id = payload["app_id"]
+            mailbox_id = payload["mailbox_id"]
+            message_id = int(payload["message_id"])
+        except (KeyError, TypeError, ValueError):
+            log.msg("ignoring malformed mailbox pub/sub event")
+            return
+        if threading.get_ident() == self._reactor_thread:
+            self._deliver_published_message(app_id, mailbox_id, message_id)
+        else:
+            # The PostgreSQL listener runs in a background thread; all
+            # mailbox/listener mutation must happen on the reactor thread.
+            reactor.callFromThread(
+                self._deliver_published_message, app_id, mailbox_id,
+                message_id)
+
+    def _deliver_published_message(self, app_id, mailbox_id, message_id):
+        app = self._apps.get(app_id)
+        if app is None:
+            return
+        mailbox = app._mailboxes.get(mailbox_id)
+        if mailbox is None or not mailbox.has_listeners():
+            return
+        row = self._store.get_message(message_id)
+        if (row is None or row["app_id"] != app_id
+                or row["mailbox_id"] != mailbox_id):
+            return
+        mailbox.broadcast_message(SidedMessage(
+            side=row["side"], phase=row["phase"], body=row["body"],
+            server_rx=row["server_rx"], msg_id=row["msg_id"]))
+
     def get_all_apps(self):
-        apps = set()
-        for row in self._db.execute("SELECT DISTINCT `app_id`"
-                                    " FROM `nameplates`").fetchall():
-            apps.add(row["app_id"])
-        for row in self._db.execute("SELECT DISTINCT `app_id`"
-                                    " FROM `mailboxes`").fetchall():
-            apps.add(row["app_id"])
-        for row in self._db.execute("SELECT DISTINCT `app_id`"
-                                    " FROM `messages`").fetchall():
-            apps.add(row["app_id"])
-        return apps
+        return self._store.get_app_ids()
 
     def prune_all_apps(self, now, old):
         # As with AppNamespace.prune_old_mailboxes, we log for now.
@@ -635,10 +623,22 @@ class Server(service.MultiService):
     def clear_connections(self):
         self._connection_table.clear()
 
+    def heartbeat(self, now):
+        with self._store.transaction():
+            self._store.heartbeat_replica(self._replica_id, int(now))
+
+    def expire_replicas(self, now, ttl):
+        with self._store.transaction():
+            return self._store.expire_stale_replicas(
+                int(now - ttl), exclude_replica_id=self._replica_id)
+
+    def get_live_connections(self, now, ttl):
+        return self._store.get_live_connections(int(now - ttl))
+
     def dump_stats(self, now, rebooted):
-        if not self._usage_db:
+        if not self._usage_store:
             return
-        # write everything to self._usage_db
+        # write everything to the usage store
 
         # Most of our current-status state is recorded in the channel_db, and
         # our historical state goes into the usage_db. Both are updated each
@@ -654,13 +654,9 @@ class Server(service.MultiService):
         # have non-websocket connections yet, but when we add them, this needs
         # to be updated. Probably by asking the WebSocketServerFactory to count
         # them.
-        self._usage_db.execute("DELETE FROM `current`")
-        self._usage_db.execute("INSERT INTO `current`"
-                               " (`rebooted`, `updated`, `blur_time`,"
-                               "  `connections_websocket`)"
-                               " VALUES(?,?,?,?)",
-                               (rebooted, now, self._blur_usage, connections))
-        self._usage_db.commit()
+        with self._usage_store.transaction():
+            self._usage_store.replace_current(
+                rebooted, now, self._blur_usage, connections)
 
         # current status: expected to be zero most of the time
         #c["nameplates_total"] = q("SELECT COUNT() FROM `nameplates`")
@@ -682,7 +678,12 @@ class Server(service.MultiService):
         # TODO: mailboxes without nameplates (needs new DB schema)
 
     def startService(self):
-        service.MultiService.startService(self)
+        self._pubsub.start()
+        try:
+            service.MultiService.startService(self)
+        except Exception:
+            self._pubsub.stop()
+            raise
         log.msg("Wormhole relay server running")
         if self._blur_usage:
             log.msg("blurring access times to %d seconds" % self._blur_usage)
@@ -701,7 +702,14 @@ class Server(service.MultiService):
         # other client gets an error, and exits promptly.
         for app in self._apps.values():
             app._shutdown()
-        return service.MultiService.stopService(self)
+        try:
+            return service.MultiService.stopService(self)
+        finally:
+            try:
+                with self._store.transaction():
+                    self._store.delete_replica(self._replica_id)
+            finally:
+                self._pubsub.stop()
 
 def make_server(db, allow_list=True,
                 advertise_version=None,
@@ -710,6 +718,8 @@ def make_server(db, allow_list=True,
                 usage_db=None,
                 welcome_motd=None,
                 addrid_db=None,
+                pubsub=None,
+                replica_id=None,
                 ):
     if blur_usage:
         log.msg("blurring access times to %d seconds" % blur_usage)
@@ -733,4 +743,5 @@ def make_server(db, allow_list=True,
         welcome["error"] = signal_error
 
     return Server(db, allow_list=allow_list, welcome=welcome,
-                  blur_usage=blur_usage, usage_db=usage_db, addrid_db=addrid_db)
+                  blur_usage=blur_usage, usage_db=usage_db, addrid_db=addrid_db,
+                  pubsub=pubsub, replica_id=replica_id)

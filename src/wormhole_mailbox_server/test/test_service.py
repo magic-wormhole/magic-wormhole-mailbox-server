@@ -4,11 +4,18 @@ from twisted.application.service import MultiService
 from .. import server_tap
 
 class Service(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch(
+            "wormhole_mailbox_server.server_tap.load_or_create_replica_id",
+            return_value="replica-1")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_defaults(self):
         o = server_tap.Options()
         o.parseOptions([])
         cdb = object()
-        udb = object()
+        udb = mock.Mock()
         aidb = object()
         r = mock.Mock()
         ws = object()
@@ -28,6 +35,8 @@ class Service(unittest.TestCase):
                                                    blur_usage=None,
                                                    usage_db=None,
                                                    addrid_db=None,
+                                                   pubsub=None,
+                                                   replica_id="replica-1",
                                                    )])
         self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
         self.assertIsInstance(s, MultiService)
@@ -37,7 +46,7 @@ class Service(unittest.TestCase):
         o = server_tap.Options()
         o.parseOptions(["--usage-db=usage.sqlite"])
         cdb = object()
-        udb = object()
+        udb = mock.Mock()
         r = mock.Mock()
         ws = object()
         with mock.patch("wormhole_mailbox_server.server_tap.create_or_upgrade_channel_db", return_value=cdb) as ccdb:
@@ -46,7 +55,8 @@ class Service(unittest.TestCase):
                     with mock.patch("wormhole_mailbox_server.server_tap.make_web_server", return_value=ws) as mws:
                         s = server_tap.makeService(o)
         self.assertEqual(ccdb.mock_calls, [mock.call("relay.sqlite")])
-        self.assertEqual(ccub.mock_calls, [mock.call("usage.sqlite")])
+        self.assertEqual(ccub.mock_calls, [mock.call("usage.sqlite", "replica-1")])
+        self.assertEqual(udb.register_replica.mock_calls, [mock.call()])
         self.assertEqual(ms.mock_calls, [mock.call(cdb, allow_list=True,
                                                    advertise_version=None,
                                                    signal_error=None,
@@ -54,6 +64,8 @@ class Service(unittest.TestCase):
                                                    blur_usage=None,
                                                    usage_db=udb,
                                                    addrid_db=None,
+                                                   pubsub=None,
+                                                   replica_id="replica-1",
                                                    )])
         self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
         self.assertIsInstance(s, MultiService)
@@ -63,7 +75,7 @@ class Service(unittest.TestCase):
         o = server_tap.Options()
         o.parseOptions(["--addrid-db=addresses.sqlite"])
         cdb = object()
-        udb = object()
+        udb = mock.Mock()
         aidb = object()
         r = mock.Mock()
         ws = object()
@@ -83,6 +95,8 @@ class Service(unittest.TestCase):
                                                    blur_usage=None,
                                                    usage_db=None,
                                                    addrid_db=aidb,
+                                                   pubsub=None,
+                                                   replica_id="replica-1",
                                                    )])
         self.assertEqual(mws.mock_calls, [mock.call(r, True, [])])
         self.assertIsInstance(s, MultiService)

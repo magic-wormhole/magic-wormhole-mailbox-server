@@ -1,11 +1,86 @@
 import os
+from sqlalchemy import inspect
 from twisted.python import filepath
 from twisted.trial import unittest
 from .. import database
 from ..database import (CHANNELDB_TARGET_VERSION, USAGEDB_TARGET_VERSION,
                         _get_db, dump_db, DBError)
 
-class Get(unittest.TestCase):
+if os.environ.get("WORMHOLE_TEST_UNIT_BACKEND_URL"):
+    _SQLITE_ONLY_SKIP = (
+        "database schema/upgrade tests use SQLite-specific legacy files")
+else:
+    _SQLITE_ONLY_SKIP = None
+
+
+class SQLiteOnly(unittest.TestCase):
+    skip = _SQLITE_ONLY_SKIP
+
+
+def schema_signature(db):
+    """Return a dialect-independent description of a database's schema."""
+    inspector = inspect(db.engine)
+    signature = {}
+    for table in sorted(inspector.get_table_names()):
+        signature[table] = {
+            "columns": [
+                (column["name"], str(column["type"]), column["nullable"])
+                for column in inspector.get_columns(table)
+            ],
+            "primary_key": tuple(
+                inspector.get_pk_constraint(table)["constrained_columns"]),
+            "indexes": sorted(
+                (index["name"], tuple(index["column_names"]), index["unique"])
+                for index in inspector.get_indexes(table)
+            ),
+            "foreign_keys": sorted(
+                (tuple(fk["constrained_columns"]),
+                 fk["referred_table"],
+                 tuple(fk["referred_columns"]))
+                for fk in inspector.get_foreign_keys(table)
+            ),
+        }
+    return signature
+
+def schema_shape(db):
+    """Return table/column/index names, ignoring legacy type/nullability
+    differences between the historical SQL DDL and Core metadata."""
+    signature = schema_signature(db)
+    return {
+        table: {
+            "columns": [column[0] for column in info["columns"]],
+            "primary_key": info["primary_key"],
+            "indexes": [(name, columns) for name, columns, unique
+                        in info["indexes"]],
+        }
+        for table, info in signature.items()
+    }
+
+
+class EngineOptions(unittest.TestCase):
+    def test_mysql_uses_read_committed(self):
+        # A MySQL store keeps one long-lived connection.  The default
+        # REPEATABLE READ snapshot would hide rows committed by another
+        # replica, breaking Redis/Kafka fan-out.
+        engine = database._make_engine(
+            "mysql+pymysql://user:pass@127.0.0.1/db")
+        try:
+            self.assertEqual(
+                engine.dialect._on_connect_isolation_level,
+                "READ COMMITTED")
+        finally:
+            engine.dispose()
+
+    def test_sqlite_keeps_default_isolation(self):
+        engine = database._make_engine("sqlite://")
+        try:
+            self.assertIsNone(
+                engine.dialect._on_connect_isolation_level)
+        finally:
+            engine.dispose()
+
+
+class Get(SQLiteOnly):
     def test_create_default(self):
         db_url = ":memory:"
         db = _get_db(db_url, "channel", CHANNELDB_TARGET_VERSION)
@@ -55,6 +130,63 @@ class Get(unittest.TestCase):
         patch.restore()
         _get_db(dbfile.path, "channel", CHANNELDB_TARGET_VERSION)
 
+    def test_channel_upgrade_adds_message_ids(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "channel.db")
+
+        # Build a v2 database with messages, including ties on server_rx.
+        db = _get_db(fn, "channel", 2)
+        db.execute("INSERT INTO `mailboxes`"
+                   " (`app_id`, `id`, `for_nameplate`, `updated`)"
+                   " VALUES(?,?,?,?)", ("appid", "mid", True, 0))
+        for body, rx in (("a", 5), ("b", 5), ("c", 4)):
+            db.execute("INSERT INTO `messages`"
+                       " (`app_id`, `mailbox_id`, `side`, `phase`, `body`,"
+                       "  `server_rx`, `msg_id`)"
+                       " VALUES(?,?,?,?,?,?,?)",
+                       ("appid", "mid", "side", "p", body, rx, "m"))
+        db.commit()
+        del db
+
+        upgraded = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
+        rows = upgraded.get_messages("appid", "mid")
+        self.assertEqual([row["body"] for row in rows], ["c", "a", "b"])
+        # Within a shared server_rx, the explicit id is the tie-breaker.
+        ties = [row["id"] for row in rows if row["server_rx"] == 5]
+        self.assertEqual(ties, sorted(ties))
+        self.assertEqual(sorted(row["id"] for row in rows), [1, 2, 3])
+
+        fresh = _get_db(":memory:", "channel", CHANNELDB_TARGET_VERSION)
+        self.assertEqual(schema_shape(fresh), schema_shape(upgraded))
+
+    def test_channel_upgrade_from_v1_drops_unused_column(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "channel-v1.db")
+
+        db = _get_db(fn, "channel", 1)
+        db.execute("INSERT INTO `mailboxes`"
+                   " (`app_id`, `id`, `for_nameplate`, `updated`)"
+                   " VALUES(?,?,?,?)", ("appid", "mid", True, 0))
+        db.execute("INSERT INTO `messages`"
+                   " (`app_id`, `mailbox_id`, `side`, `phase`, `body`,"
+                   "  `server_rx`, `msg_id`)"
+                   " VALUES(?,?,?,?,?,?,?)",
+                   ("appid", "mid", "side", "p", "body", 5, "m"))
+        db.commit()
+        del db
+
+        upgraded = _get_db(fn, "channel", CHANNELDB_TARGET_VERSION)
+        columns = [column["name"] for column in
+                   inspect(upgraded.engine).get_columns("addrid_generation")]
+        self.assertEqual(columns, ["generation", "started"])
+        self.assertEqual([row["body"] for row in
+                          upgraded.get_messages("appid", "mid")], ["body"])
+
+        fresh = _get_db(":memory:", "channel", CHANNELDB_TARGET_VERSION)
+        self.assertEqual(schema_shape(fresh), schema_shape(upgraded))
+
     def test_upgrade(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
@@ -73,22 +205,23 @@ class Get(unittest.TestCase):
         rows = dbA.execute("SELECT * FROM version").fetchall()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["version"], USAGEDB_TARGET_VERSION)
+        dbA_schema = schema_signature(dbA)
         dbA_text = dump_db(dbA)
         del dbA
 
         # make sure the upgrades got committed to disk
         dbB = _get_db(fn, "usage", USAGEDB_TARGET_VERSION)
         dbB_text = dump_db(dbB)
+        self.assertEqual(schema_signature(dbB), dbA_schema)
         del dbB
         self.assertEqual(dbA_text, dbB_text)
 
         # The upgraded schema should be equivalent to that of a new DB.
         latest_db = _get_db(":memory:", "usage", USAGEDB_TARGET_VERSION)
-        latest_text = dump_db(latest_db)
         with open("up.sql","w") as f: f.write(dbA_text)
-        with open("new.sql","w") as f: f.write(latest_text)
+        with open("new.sql","w") as f: f.write(dump_db(latest_db))
         # debug with "diff -u _trial_temp/up.sql _trial_temp/new.sql"
-        self.assertEqual(dbA_text, latest_text)
+        self.assertEqual(schema_signature(latest_db), dbA_schema)
 
     def test_upgrade_fails(self):
         basedir = self.mktemp()
@@ -108,7 +241,97 @@ class Get(unittest.TestCase):
         with self.assertRaises(DBError):
             _get_db(fn, "usage", USAGEDB_TARGET_VERSION+1)
 
-class CreateChannel(unittest.TestCase):
+class Alembic(SQLiteOnly):
+    def test_fresh_database_is_stamped(self):
+        db = database.create_channel_db(":memory:")
+        self.assertEqual(database._alembic_version(db.engine, "channel"),
+                         "channel_0002")
+        tables = inspect(db.engine).get_table_names()
+        self.assertIn("messages", tables)
+        self.assertNotIn("version", tables)
+
+    def test_usage_schema_replica_keys(self):
+        db = database.create_usage_db(":memory:", "replica-1")
+        self.assertEqual(database._alembic_version(db.engine, "usage"),
+                         "usage_0002")
+        inspector = inspect(db.engine)
+        self.assertEqual(
+            inspector.get_pk_constraint("current")["constrained_columns"],
+            ["replica_id"])
+        for table in ("nameplates", "mailboxes", "client_versions"):
+            self.assertEqual(
+                inspector.get_pk_constraint(table)["constrained_columns"],
+                ["id"])
+            self.assertIn("replica_id",
+                          [c["name"] for c in inspector.get_columns(table)])
+        self.assertEqual(
+            inspector.get_pk_constraint("replicas")["constrained_columns"],
+            ["replica_id"])
+        self.assertIn("hostname",
+                      [c["name"] for c in inspector.get_columns("replicas")])
+
+    def test_legacy_channel_upgrade_is_stamped(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "legacy-channel.db")
+
+        legacy = _get_db(fn, "channel", 2)
+        legacy.execute("INSERT INTO `mailboxes`"
+                       " (`app_id`, `id`, `for_nameplate`, `updated`)"
+                       " VALUES(?,?,?,?)", ("appid", "mid", True, 0))
+        legacy.execute("INSERT INTO `messages`"
+                       " (`app_id`, `mailbox_id`, `side`, `phase`, `body`,"
+                       "  `server_rx`, `msg_id`)"
+                       " VALUES(?,?,?,?,?,?,?)",
+                       ("appid", "mid", "side", "p", "body", 5, "m"))
+        legacy.commit()
+        del legacy
+
+        db = database.create_or_upgrade_channel_db(fn)
+        self.assertEqual(database._alembic_version(db.engine, "channel"),
+                         "channel_0002")
+        self.assertEqual([row["body"] for row in
+                          db.get_messages("appid", "mid")], ["body"])
+        # Re-opening runs the migration path again without changing state.
+        db2 = database.create_or_upgrade_channel_db(fn)
+        self.assertEqual([row["body"] for row in
+                          db2.get_messages("appid", "mid")], ["body"])
+
+    def test_legacy_usage_upgrade_is_stamped(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "legacy-usage.db")
+
+        legacy = _get_db(fn, "usage", 1)
+        legacy.execute("INSERT INTO `nameplates`"
+                       " (`app_id`, `started`, `waiting_time`,"
+                       "  `total_time`, `result`)"
+                       " VALUES(?,?,?,?,?)",
+                       ("appid", 1, 1, 2, "happy"))
+        legacy.commit()
+        del legacy
+
+        db = database.create_or_upgrade_usage_db(fn, "replica-1")
+        self.assertEqual(database._alembic_version(db.engine, "usage"),
+                         "usage_0002")
+        rows = db.execute("SELECT * FROM `nameplates`").fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["result"], "happy")
+        self.assertEqual(rows[0]["replica_id"], "legacy")
+        self.assertTrue(rows[0]["id"])
+        self.assertEqual(db.replica_id, "replica-1")
+
+    def test_corrupt_database(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "corrupt.db")
+        with open(fn, "wb") as f:
+            f.write(b"I am not a database")
+        with self.assertRaises(DBError):
+            database.create_or_upgrade_channel_db(fn)
+
+
+class CreateChannel(SQLiteOnly):
     def test_memory(self):
         db = database.create_channel_db(":memory:")
         latest_text = dump_db(db)
@@ -139,9 +362,9 @@ class CreateChannel(unittest.TestCase):
         latest_text = dump_db(db)
         self.assertIn("CREATE TABLE", latest_text)
 
-class CreateUsage(unittest.TestCase):
+class CreateUsage(SQLiteOnly):
     def test_memory(self):
-        db = database.create_usage_db(":memory:")
+        db = database.create_usage_db(":memory:", "replica-1")
         latest_text = dump_db(db)
         self.assertIn("CREATE TABLE", latest_text)
 
@@ -152,13 +375,13 @@ class CreateUsage(unittest.TestCase):
         with open(fn, "w"):
             pass
         with self.assertRaises(database.DBAlreadyExists):
-            database.create_usage_db(fn)
+            database.create_usage_db(fn, "replica-1")
 
     def test_create(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
         fn = os.path.join(basedir, "created.db")
-        db = database.create_usage_db(fn)
+        db = database.create_usage_db(fn, "replica-1")
         latest_text = dump_db(db)
         self.assertIn("CREATE TABLE", latest_text)
 
@@ -166,15 +389,15 @@ class CreateUsage(unittest.TestCase):
         basedir = self.mktemp()
         os.mkdir(basedir)
         fn = os.path.join(basedir, "created.db")
-        db = database.create_or_upgrade_usage_db(fn)
+        db = database.create_or_upgrade_usage_db(fn, "replica-1")
         latest_text = dump_db(db)
         self.assertIn("CREATE TABLE", latest_text)
 
     def test_create_or_upgrade_disabled(self):
-        db = database.create_or_upgrade_usage_db(None)
+        db = database.create_or_upgrade_usage_db(None, "replica-1")
         self.assertIs(db, None)
 
-class OpenChannel(unittest.TestCase):
+class OpenChannel(SQLiteOnly):
     def test_open(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
@@ -192,12 +415,12 @@ class OpenChannel(unittest.TestCase):
         with self.assertRaises(database.DBDoesntExist):
             database.open_existing_db(fn)
 
-class OpenUsage(unittest.TestCase):
+class OpenUsage(SQLiteOnly):
     def test_open(self):
         basedir = self.mktemp()
         os.mkdir(basedir)
         fn = os.path.join(basedir, "created.db")
-        db1 = database.create_usage_db(fn)
+        db1 = database.create_usage_db(fn, "replica-1")
         latest_text = dump_db(db1)
         self.assertIn("CREATE TABLE", latest_text)
         db2 = database.open_existing_db(fn)

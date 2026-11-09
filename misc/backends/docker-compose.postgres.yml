@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    command:
+      - postgres
+      - -c
+      - max_connections=500
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+    environment:
+      POSTGRES_USER: wormhole
+      POSTGRES_PASSWORD: wormhole
+      POSTGRES_DB: wormhole
+    ports:
+      - "127.0.0.1:${WORMHOLE_POSTGRES_PORT:-55432}:5432"
+    # Ephemeral, RAM-backed storage: everything is discarded with the
+    # container, and test databases never touch the host disk.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wormhole -d wormhole"]
+      interval: 1s
+      timeout: 5s
+      retries: 60

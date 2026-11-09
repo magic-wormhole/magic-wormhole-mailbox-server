@@ -92,7 +92,8 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
     def setUp(self):
         self._lp = None
         self._clients = []
-        self._usage_db = usage_db = create_or_upgrade_usage_db(":memory:")
+        self._usage_db = usage_db = create_or_upgrade_usage_db(
+            ":memory:", "test-replica")
         yield self._setup_relay(do_listen=True,
                                 advertise_version="advertised.version",
                                 usage_db=usage_db)
@@ -300,7 +301,7 @@ class WebSocketAPI(_Util, ServerBase, unittest.TestCase):
 
         # claiming a nameplate assigns a random mailbox id and creates the
         # mailbox row
-        mailboxes = app._db.execute("SELECT * FROM `mailboxes`"
+        mailboxes = app._store.execute("SELECT * FROM `mailboxes`"
                                     " WHERE `app_id`='appid'").fetchall()
         self.assertEqual(len(mailboxes), 1)
 

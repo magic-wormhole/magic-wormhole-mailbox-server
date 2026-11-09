@@ -1,10 +1,12 @@
+import os
 from unittest import mock
 from twisted.trial import unittest
 from twisted.python import log
 from .common import ServerBase, _Util
 from ..server import (make_server, Usage,
                       SidedMessage, CrowdedError, AppNamespace)
-from ..database import create_channel_db, create_usage_db
+from ..database import (create_channel_db, create_or_upgrade_channel_db,
+                        create_usage_db)
 
 npid = "1"
 
@@ -135,7 +137,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
         app.release_nameplate(name, "side3", 7)
         np_row, side_rows = self._nameplate(app, name)
         self.assertEqual(np_row, None)
-        usage = app._usage_db.execute("SELECT * FROM `nameplates`").fetchone()
+        usage = app._usage_store.execute("SELECT * FROM `nameplates`").fetchone()
         self.assertEqual(usage["app_id"], "appid")
         self.assertEqual(usage["started"], 0)
         self.assertEqual(usage["waiting_time"], 3)
@@ -206,7 +208,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
 
         mb_row, side_rows = self._mailbox(app, mailbox_id)
         self.assertEqual(mb_row, None)
-        usage = app._usage_db.execute("SELECT * FROM `mailboxes`").fetchone()
+        usage = app._usage_store.execute("SELECT * FROM `mailboxes`").fetchone()
         self.assertEqual(usage["app_id"], "appid")
         self.assertEqual(usage["started"], 0)
         self.assertEqual(usage["waiting_time"], 2)
@@ -284,7 +286,7 @@ class Server(_Util, ServerBase, unittest.TestCase):
 class Prune(unittest.TestCase):
 
     def _get_mailbox_updated(self, app, mbox_id):
-        row = app._db.execute("SELECT * FROM `mailboxes` WHERE"
+        row = app._store.execute("SELECT * FROM `mailboxes` WHERE"
                               " `app_id`=? AND `id`=?",
                               (app._app_id, mbox_id)).fetchone()
         return row["updated"]
@@ -524,7 +526,7 @@ class Summary(unittest.TestCase):
 
     def test_blur(self):
         db = create_channel_db(":memory:")
-        usage_db = create_usage_db(":memory:")
+        usage_db = create_usage_db(":memory:", "test-replica")
         rv = make_server(db, blur_usage=3600, usage_db=usage_db)
         APPID = "appid"
         app = rv.get_app(APPID)
@@ -542,7 +544,7 @@ class Summary(unittest.TestCase):
 
     def test_no_blur(self):
         db = create_channel_db(":memory:")
-        usage_db = create_usage_db(":memory:")
+        usage_db = create_usage_db(":memory:", "test-replica")
         rv = make_server(db, blur_usage=None, usage_db=usage_db)
         APPID = "appid"
         app = rv.get_app(APPID)
@@ -651,6 +653,32 @@ class MakeServer(unittest.TestCase):
             }
         )
 
+class SessionPersistence(unittest.TestCase):
+    def test_restart_replays_session(self):
+        basedir = self.mktemp()
+        os.mkdir(basedir)
+        fn = os.path.join(basedir, "relay.db")
+
+        server = make_server(create_channel_db(fn))
+        app = server.get_app("appid")
+        name = "12345"
+        mailbox_id = app.claim_nameplate(name, "side1", 0)
+        mailbox = app.open_mailbox(mailbox_id, "side1", 0)
+        mailbox.add_message(SidedMessage(
+            side="side1", phase="p", body="persisted", server_rx=5,
+            msg_id="m1"))
+
+        # A second server opening the same database stands in for a process
+        # restart or a client reconnecting to another process.
+        restarted = make_server(create_or_upgrade_channel_db(fn))
+        app2 = restarted.get_app("appid")
+        self.assertEqual(app2.get_nameplate_ids(), {name})
+        self.assertEqual(app2.claim_nameplate(name, "side2", 10), mailbox_id)
+        reopened = app2.open_mailbox(mailbox_id, "side2", 10)
+        self.assertEqual([message.body for message in
+                          reopened.get_messages()], ["persisted"])
+
+
 # exercise _find_available_nameplate_id failing
 # exercise CrowdedError
 # exercise double free_mailbox
@@ -661,3 +689,24 @@ class MakeServer(unittest.TestCase):
 ## test make_server(signal_error=)
 ## exercise dump_stats (with/without usagedb)
 
+
+
+class ReplicaRegistration(unittest.TestCase):
+    def test_server_registers_heartbeats_and_cleans_up(self):
+        import socket
+
+        db = create_channel_db(":memory:")
+        server = make_server(db, replica_id="replica-x")
+
+        rows = db.execute("SELECT * FROM `replicas`").fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "replica-x")
+        self.assertEqual(rows[0]["host"], socket.gethostname())
+        self.assertEqual(rows[0]["pid"], os.getpid())
+
+        server.heartbeat(12345)
+        row = db.execute("SELECT * FROM `replicas`").fetchone()
+        self.assertEqual(row["heartbeat"], 12345)
+
+        server.stopService()
+        self.assertEqual(db.execute("SELECT * FROM `replicas`").fetchall(), [])

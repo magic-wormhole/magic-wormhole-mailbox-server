@@ -1,0 +1,21 @@
+services:
+  mysql:
+    image: mysql:8.4
+    command:
+      - --max-connections=1000
+      - --performance-schema=OFF
+    environment:
+      MYSQL_ROOT_PASSWORD: wormhole
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_DATABASE: wormhole
+    ports:
+      - "127.0.0.1:${WORMHOLE_MYSQL_PORT:-53306}:3306"
+    # Ephemeral, RAM-backed storage: everything is discarded with the
+    # container, and test databases never touch the host disk.
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -pwormhole --silent"]
+      interval: 1s
+      timeout: 5s
+      retries: 60

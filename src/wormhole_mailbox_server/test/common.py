@@ -16,7 +16,7 @@ class ServerBase:
             blur_usage = None
         else:
             blur_usage = 60.0
-        usage_db = create_or_upgrade_usage_db(":memory:")
+        usage_db = create_or_upgrade_usage_db(":memory:", "test-replica")
         yield self._setup_relay(blur_usage=blur_usage, usage_db=usage_db)
 
     @inlineCallbacks
@@ -54,30 +54,30 @@ class ServerBase:
 
 class _Util:
     def _nameplate(self, app, name):
-        np_row = app._db.execute("SELECT * FROM `nameplates`"
+        np_row = app._store.execute("SELECT * FROM `nameplates`"
                                  " WHERE `app_id`='appid' AND `name`=?",
                                  (name,)).fetchone()
         if not np_row:
             return None, None
         npid = np_row["id"]
-        side_rows = app._db.execute("SELECT * FROM `nameplate_sides`"
+        side_rows = app._store.execute("SELECT * FROM `nameplate_sides`"
                                     " WHERE `nameplates_id`=?",
                                     (npid,)).fetchall()
         return np_row, side_rows
 
     def _mailbox(self, app, mailbox_id):
-        mb_row = app._db.execute("SELECT * FROM `mailboxes`"
+        mb_row = app._store.execute("SELECT * FROM `mailboxes`"
                                  " WHERE `app_id`='appid' AND `id`=?",
                                  (mailbox_id,)).fetchone()
         if not mb_row:
             return None, None
-        side_rows = app._db.execute("SELECT * FROM `mailbox_sides`"
+        side_rows = app._store.execute("SELECT * FROM `mailbox_sides`"
                                     " WHERE `mailbox_id`=?",
                                     (mailbox_id,)).fetchall()
         return mb_row, side_rows
 
     def _messages(self, app):
-        c = app._db.execute("SELECT * FROM `messages`"
+        c = app._store.execute("SELECT * FROM `messages`"
                             " WHERE `app_id`='appid' AND `mailbox_id`='mid'")
         return c.fetchall()
 

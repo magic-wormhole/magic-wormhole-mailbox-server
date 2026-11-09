@@ -1,0 +1,13 @@
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+build
+dist
+_trial_temp*
+docs
+misc
+signatures

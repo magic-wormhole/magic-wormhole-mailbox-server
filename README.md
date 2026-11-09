@@ -76,24 +76,85 @@ wormhole --relay-url=ws://example.com:4000/v1 send FILENAME
 
 ## Using Docker
 
-Dockerfile content:
-```dockerfile
-FROM python:3.11
-RUN pip install magic-wormhole-mailbox-server
-CMD [ "twist", "wormhole-mailbox","--usage-db=usage.sqlite" ]
-```
-> Note: This will be running as root, you should adjust it to be in user space for production.
+The repository includes a multi-stage `misc/Dockerfile` that installs this
+package into a slim Python image, runs the server as an unprivileged user,
+and keeps all state in `/data`. The image installs the `backends` extra, so
+it includes the drivers for every supported database and pub/sub transport:
+PostgreSQL (`psycopg`), MySQL/MariaDB (`pymysql`), Redis (`redis`), and
+Kafka (`confluent-kafka`).
 
-Build and run:
+Build:
+
 ```shell
-docker build -t magicwormhole Dockerfile
-docker run -p 4000:4000 -d magicwormhole
+docker build -f misc/Dockerfile -t magic-wormhole-mailbox .
 ```
 
-Connect:
+Run (the named volume persists `relay.sqlite` and `usage.sqlite`):
+
+```shell
+docker run -d --name wormhole-mailbox \
+  -p 4000:4000 \
+  -v wormhole-mailbox-data:/data \
+  magic-wormhole-mailbox
+```
+
+The container entrypoint is `twist wormhole-mailbox`; its default arguments
+are:
+
+```
+--channel-db=/data/relay.sqlite
+--usage-db=/data/usage.sqlite
+--port=tcp:4000
+```
+
+Override any of them by appending arguments after the image name. For
+example, to disable the usage database and add IP-address tracking:
+
+```shell
+docker run -d --name wormhole-mailbox \
+  -p 4000:4000 \
+  -v wormhole-mailbox-data:/data \
+  magic-wormhole-mailbox \
+  --channel-db=/data/relay.sqlite \
+  --addrid-db=/data/addrid.sqlite \
+  --port=tcp:4000
+```
+
+The image exposes port `4000` and includes a TCP healthcheck. Client
+commands point at the mapped port:
+
 ```shell
 wormhole --relay-url=ws://localhost:4000/v1 send FILENAME
 ```
+
+## Database backends and migrations
+
+SQLite remains the default: `--channel-db` accepts a filename (or
+`:memory:`), and `--usage-db` / `--addrid-db` are optional SQLite files.
+The three databases can also be pointed at any SQLAlchemy URL containing
+`://` (for example `postgresql://user:pass@host/dbname`).
+
+Schema changes are applied with Alembic at startup. Migration execution is
+serialized per database (advisory locks on PostgreSQL/MySQL, a lock file
+for SQLite), so multiple server processes can share the same database.
+Existing SQLite databases created with older releases are upgraded through
+the legacy versioned SQL scripts, backed up first, and then stamped into the
+Alembic revision history.
+
+Live WebSocket fan-out is also database-backed. PostgreSQL uses
+`LISTEN`/`NOTIFY`, so several server processes can share a channel database
+and deliver messages to clients connected to any replica. Redis or Kafka can
+be selected as an independent transport for any channel database with
+`--pubsub=redis://host:6379/0` or `--pubsub=kafka://host:9092` (install the
+`redis` or `kafka` extra). SQLite and MySQL/MariaDB have no equivalent
+asynchronous notification primitive; for those backends the server holds a
+process-lifetime lock and refuses to start a second process against the same
+database unless Redis or Kafka is configured. Use PostgreSQL, Redis, or
+Kafka for a horizontally scaled deployment.
+
+To run the unit suites against SQLite, MySQL, and PostgreSQL in parallel,
+followed by the behavioral suites for every database × pub/sub combination,
+use `misc/backends/test-backends.py` (see `misc/backends/README.md`).
 
 ## License, Compatibility
 

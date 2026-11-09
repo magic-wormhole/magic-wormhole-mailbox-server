@@ -6,6 +6,7 @@ from twisted.application.internet import (TimerService,
                                           StreamServerEndpointService)
 from twisted.internet import endpoints
 from .increase_rlimits import increase_rlimits
+from .replica import load_or_create_replica_id
 from .server import make_server
 from .web import make_web_server
 from .database import (create_or_upgrade_channel_db, create_or_upgrade_usage_db,
@@ -25,6 +26,11 @@ class Options(usage.Options):
         ("channel-db", None, "relay.sqlite", "location for the state database"),
         ("usage-db", None, None, "record usage data (SQLite)"),
         ("addrid-db", None, None, "IP address mapping data (SQLite)"),
+        ("replica-id-file", None, "replica.id",
+         "persistent identity for this server replica"),
+        ("pubsub", None, None,
+         "cross-process pub/sub backend: auto, local, postgres, redis://..., "
+         "or kafka://..."),
         ("generation-duration", None, 86400, "lifetime of IP-address tracking table"),
         ("advertise-version", None, None, "version to recommend to clients"),
         ("signal-error", None, None, "force all clients to fail with a message"),
@@ -67,14 +73,22 @@ MINUTE = 60*SECONDS
 CHANNEL_EXPIRATION_TIME = 11*MINUTE
 EXPIRATION_CHECK_PERIOD = 5*MINUTE
 
+# A replica is considered dead once its heartbeat is older than the TTL.
+REPLICA_HEARTBEAT_PERIOD = 30*SECONDS
+REPLICA_TTL = 5*REPLICA_HEARTBEAT_PERIOD
+
 def makeService(config, channel_db="relay.sqlite", reactor=reactor):
     increase_rlimits()
 
     parent = MultiService()
 
     channel_db = create_or_upgrade_channel_db(config["channel-db"])
+    replica_id = load_or_create_replica_id(config["replica-id-file"])
     usage_dbfile = config["usage-db"]
-    usage_db = create_or_upgrade_usage_db(usage_dbfile) if usage_dbfile else None
+    usage_db = (create_or_upgrade_usage_db(usage_dbfile, replica_id)
+                if usage_dbfile else None)
+    if usage_db:
+        usage_db.register_replica()
     addrid_dbfile = config["addrid-db"]
     addrid_db = create_or_upgrade_addrid_db(addrid_dbfile) if addrid_dbfile else None
     generation_duration = config["generation-duration"]
@@ -87,6 +101,8 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
                          usage_db=usage_db,
                          welcome_motd=config["motd"],
                          addrid_db=addrid_db,
+                         pubsub=config["pubsub"],
+                         replica_id=replica_id,
                          )
     server.setServiceParent(parent)
 
@@ -113,8 +129,21 @@ def makeService(config, channel_db="relay.sqlite", reactor=reactor):
         except Exception as e:
             log.msg("error during check_addrid_generation")
             log.err(e)
+        try:
+            server.expire_replicas(now, REPLICA_TTL)
+        except Exception as e:
+            log.msg("error during expire_replicas")
+            log.err(e)
         server.dump_stats(now, rebooted=rebooted)
     TimerService(EXPIRATION_CHECK_PERIOD, expire).setServiceParent(parent)
+
+    def heartbeat():
+        try:
+            server.heartbeat(time.time())
+        except Exception as e:
+            log.msg("error during replica heartbeat")
+            log.err(e)
+    TimerService(REPLICA_HEARTBEAT_PERIOD, heartbeat).setServiceParent(parent)
 
     log_requests = config["blur-usage"] is None
     site = make_web_server(server, log_requests,
